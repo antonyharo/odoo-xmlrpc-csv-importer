@@ -7,7 +7,6 @@ from get_ids import get_country_id, get_state_id, get_existing_contacts
 
 load_dotenv()
 
-
 # import csv data and return an array of contacts (com verificação de duplicatas no CSV)
 def import_csv_contacts(file_name):
     print(f"Diretório atual: {os.getcwd()}")
@@ -53,21 +52,6 @@ def import_csv_contacts(file_name):
                     "state_id": (row.get("Estado") or "").strip(),
                     "street": (row.get("Localização") or "").strip(),
                     "website": (row.get("LinkedIn") or "").strip(),
-                    # custom fields
-                    "x_redes_sociais": (
-                        row.get("Usuário - redes sociais") or ""
-                    ).strip(),
-                    "x_setor": (row.get("Setor") or "").strip(),
-                    # custom text field for the company info
-                    "x_info_empresa": f"""
-                        Nome: {(row.get("Nome da empresa") or "").strip()}
-                        Localização: {(row.get("Localização da empresa") or "").strip()}
-                        Telefone da sede: {(row.get("Telefone da sede") or "").strip()}
-                        Setor: {(row.get("Setor da empresa") or "").strip()}
-                        Tamanho: {(row.get("Tamanho da empresa") or "").strip()}
-                        URL: {(row.get("URL da empresa") or "").strip()}
-                        Redes Sociais: {(row.get("Empresa - redes sociais") or "").strip()}
-                    """,
                 }
 
                 if not contact["name"] or not contact["email"]:
