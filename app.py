@@ -1,11 +1,14 @@
-import xmlrpc.client
 import csv
 import os
 import time
+import xmlrpc.client
+
 from dotenv import load_dotenv
-from get_ids import get_country_id, get_state_id, get_existing_contacts
+
+from get_ids import get_country_id, get_existing_contacts, get_state_id
 
 load_dotenv()
+
 
 # import csv data and return an array of contacts (com verificação de duplicatas no CSV)
 def import_csv_contacts(file_name):
@@ -23,27 +26,24 @@ def import_csv_contacts(file_name):
             invalid_contacts = []
 
             # control sets to avoid duplicated contacts
-            seen_names = set()
             seen_emails = set()
 
             print("\nRegistros válidos do arquivo:")
 
             # get the contact info from the csv file
             for row_index, row in enumerate(reader, start=1):
-                contact_name = (row.get("Nome completo") or "").strip()
                 contact_email = (row.get("E-mail") or "").strip()
 
                 # check if the name or email is alredy in the sets
-                if contact_name in seen_names or contact_email in seen_emails:
+                if contact_email in seen_emails:
                     continue
 
                 # add the name and email to the sets variables
-                seen_names.add(contact_name)
                 seen_emails.add(contact_email)
 
                 contact = {
                     # default res.partner fields
-                    "name": contact_name,
+                    "name": (row.get("Nome completo") or "").strip(),
                     "email": contact_email,
                     "function": (row.get("Cargo") or "").strip(),
                     "company_name": (row.get("Nome da empresa") or "").strip(),
@@ -56,7 +56,7 @@ def import_csv_contacts(file_name):
 
                 if not contact["name"] or not contact["email"]:
                     invalid_contacts.append(
-                        f"Registro {row_index}, {contact['name']}, {contact['email']}"
+                        f"Registro inválido: {row_index}, {contact['name']}, {contact['email']}"
                     )
                     continue
 
@@ -88,17 +88,6 @@ def authenticate(url, db, username, password):
 
     except Exception as e:
         print(f"Erro ao autenticar: {e}")
-
-
-# verify if the contact alredy exists in the odoo database
-def contact_exists_odoo(existing_contacts, contact):
-    for existing_contact in existing_contacts:
-        if (
-            existing_contact["name"] == contact["name"]
-            or existing_contact["email"] == contact["email"]
-        ):
-            return True
-    return False
 
 
 # cache dictionaries for the country and state
@@ -133,17 +122,27 @@ def get_state_id_cached(models, db, uid, password, country_id, state_name):
     return state_id
 
 
+# verify if the contact already exists in the odoo database
+def contact_exists_odoo(existing_contacts, contact):
+    for existing_contact in existing_contacts:
+        if (
+            existing_contact["name"] == contact["name"]
+            or existing_contact["email"] == contact["email"]
+        ):
+            return True
+    return False
+
+
 # create the contacts using the cache feature
 def create_contacts(url, db, uid, password, contacts):
     try:
         models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(url))
-        existing_contacts = get_existing_contacts(models, db, uid, password)
+        contacts_db = get_existing_contacts(models, db, uid, password) or []
+
+        existing_emails = {c["email"] for c in contacts_db if c.get("email")} #type: ignore
 
         for contact in contacts:
-            if contact_exists_odoo(existing_contacts, contact):
-                print(
-                    f"{contact['name']} ou o email {contact['email']} já existe em seu banco de dados."
-                )
+            if contact["email"] in existing_emails:
                 continue
 
             country_id = get_country_id_cached(
