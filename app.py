@@ -18,26 +18,20 @@ total_contacts_created = 0  # this will be used as a counter
 
 
 # import csv data and return an array of contacts (com verificação de duplicatas no CSV)
-def import_csv_contacts(file_name):
-    print(f"Diretório atual: {os.getcwd()}")
-
+def stream_csv_contacts(file_name):
     try:
-        if not os.path.isfile(file_name):
-            print(f"Arquivo '{file_name}' não encontrado no diretório atual.")
-            return
-
         with open(file_name, mode="r", newline="", encoding="utf-8") as file:
             reader = csv.DictReader(file)
-
-            contacts = []
-            invalid_contacts = []
 
             # control sets to avoid duplicated contacts
             seen_emails = set()
 
             # get the contact info from the csv file
-            for row_index, row in enumerate(reader, start=1):
+            for row in reader:
                 contact_email = (row.get("E-mail") or "").strip()
+
+                if not row.get("E-mail") or not row.get("Nome completo"):
+                    continue
 
                 # check if the name or email is alredy in the sets
                 if contact_email in seen_emails:
@@ -46,7 +40,7 @@ def import_csv_contacts(file_name):
                 # add the name and email to the sets variables
                 seen_emails.add(contact_email)
 
-                contact = {
+                yield {
                     # default res.partner fields
                     "name": (row.get("Nome completo") or "").strip(),
                     "email": contact_email,
@@ -58,21 +52,6 @@ def import_csv_contacts(file_name):
                     "street": (row.get("Localização") or "").strip(),
                     "website": (row.get("LinkedIn") or "").strip(),
                 }
-
-                if not contact["name"] or not contact["email"]:
-                    invalid_contacts.append(
-                        f"Registro inválido: {row_index}, {contact['name']}, {contact['email']}"
-                    )
-                    continue
-
-                contacts.append(contact)
-
-            if invalid_contacts:
-                print("\nRegistros inválidos:")
-                for i in invalid_contacts:
-                    print(i)
-
-            return contacts
 
     except Exception as e:
         print(f"Erro ao carregar o arquivo: {e}")
@@ -120,7 +99,7 @@ def get_state_id_cached(models, db, uid, password, country_id, state_name):
 
 
 # create the contacts using the cache feature
-def create_contacts(db, uid, password, contacts, models, total_contacts):
+def create_contacts(db, uid, password, contacts, models):
     global total_contacts_created
 
     try:
@@ -139,8 +118,6 @@ def create_contacts(db, uid, password, contacts, models, total_contacts):
 
         set_emails_db = {r["email"] for r in records_db if r.get("email")}
 
-        print(set_emails_db)
-
         # sanitize data to contain ids or to identidy if already exists in db
         for contact in contacts:
             if contact["email"] in set_emails_db:
@@ -153,8 +130,8 @@ def create_contacts(db, uid, password, contacts, models, total_contacts):
                 models, db, uid, password, country_id, contact["state_id"]
             )
 
-            contact["state_id"] = state_id or ""
-            contact["country_id"] = country_id or ""
+            contact["country_id"] = country_id if country_id else False
+            contact["state_id"] = state_id if state_id else False
 
             contacts_to_create.append(contact)
 
@@ -164,55 +141,66 @@ def create_contacts(db, uid, password, contacts, models, total_contacts):
             )
 
             total_contacts_created += len(created_ids)
-
-            print(f"{len(created_ids)} contatos criados de {total_contacts}.")  # type: ignore
+            print(f"Lote processado: {len(created_ids)} novos contatos criados.")
 
         else:
-            print("Nenhum contato foi carregado.\n")
+            print("Lote processado: Nenhum contato novo encontrado.")
 
     except Exception as e:
         print(f"Erro ao criar contatos: {e}")
 
 
-def main():
+def chunker(iterable, size):
+    batch = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) == size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def main(file_name):
     # get the credentials
     odoo_url = os.getenv("ODOO_URL")
     odoo_db = os.getenv("ODOO_DB")
     odoo_username = os.getenv("ODOO_USERNAME")
     odoo_password = os.getenv("ODOO_PASSWORD")
 
+    print("\nBem vindo ao importador de contatos .CSV!")
+
+    print(f"\nDiretório atual: {os.getcwd()}")
+    if not os.path.isfile(file_name):
+        print(f"Arquivo '{file_name}' não encontrado no diretório atual.")
+        return
+
     # try to authenticate the user and get the uid
     uid = authenticate(odoo_url, odoo_db, odoo_username, odoo_password)
     if uid:
         # get the contacts from csv
-        contacts = import_csv_contacts("test.csv")
+        contacts_stream = stream_csv_contacts(file_name)
 
-        if contacts:
-            print(f"\nTotal de contatos para serem carregados: {len(contacts)}\n")
-
-            def chunker(iterable, size):
-                for i in range(0, len(iterable), size):
-                    yield iterable[i : i + size]
-
+        if contacts_stream:
             models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_url))
 
             # create contacts in batches to avoid overload in odoo or local memory
-            for batch in chunker(contacts, 1000):
+            for batch in chunker(contacts_stream, 1000):
                 create_contacts(
                     odoo_db,
                     uid,
                     odoo_password,
                     batch,
                     models,
-                    len(contacts),
                 )
 
-            print(f"\nTotal de contatos carregados: {total_contacts_created}\n")
+            print("\nImportação finalizada! ;)")
+            print(f"Total de novos contatos no banco: {total_contacts_created}\n")
 
 
 if __name__ == "__main__":
-    start_time = time.time()  # register the time
-    main()
+    start_time = time.time()
+    main("stress_test.csv")
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(
