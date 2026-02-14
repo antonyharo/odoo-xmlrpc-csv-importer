@@ -10,6 +10,13 @@ from get_ids import get_country_id, get_existing_contacts, get_state_id
 load_dotenv()
 
 
+# cache dictionaries for the country and state
+country_cache = {}
+state_cache = {}
+
+total_contacts_created = 0  # this will be used as a counter
+
+
 # import csv data and return an array of contacts (com verificação de duplicatas no CSV)
 def import_csv_contacts(file_name):
     print(f"Diretório atual: {os.getcwd()}")
@@ -90,11 +97,6 @@ def authenticate(url, db, username, password):
         print(f"Erro ao autenticar: {e}")
 
 
-# cache dictionaries for the country and state
-country_cache = {}
-state_cache = {}
-
-
 # check if the country_id already exists or search and save in the cache
 def get_country_id_cached(models, db, uid, password, country_name):
     if country_name in country_cache:
@@ -122,25 +124,16 @@ def get_state_id_cached(models, db, uid, password, country_id, state_name):
     return state_id
 
 
-# verify if the contact already exists in the odoo database
-def contact_exists_odoo(existing_contacts, contact):
-    for existing_contact in existing_contacts:
-        if (
-            existing_contact["name"] == contact["name"]
-            or existing_contact["email"] == contact["email"]
-        ):
-            return True
-    return False
-
-
 # create the contacts using the cache feature
-def create_contacts(url, db, uid, password, contacts):
+def create_contacts(
+    db, uid, password, contacts, models, existing_emails, total_contacts
+):
+    global total_contacts_created
+
     try:
-        models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(url))
-        contacts_db = get_existing_contacts(models, db, uid, password) or []
+        contacts_to_create: list[dict] = []
 
-        existing_emails = {c["email"] for c in contacts_db if c.get("email")} #type: ignore
-
+        # sanitize data to contain ids or to identidy if already exists in db
         for contact in contacts:
             if contact["email"] in existing_emails:
                 continue
@@ -155,10 +148,19 @@ def create_contacts(url, db, uid, password, contacts):
             contact["state_id"] = state_id or ""
             contact["country_id"] = country_id or ""
 
-            contact_id = models.execute_kw(
-                db, uid, password, "res.partner", "create", [contact]
+            contacts_to_create.append(contact)
+
+        if contacts_to_create:
+            created_ids = models.execute_kw(
+                db, uid, password, "res.partner", "create", [contacts_to_create]
             )
-            print(f"{contact['name']} criado com o ID: {contact_id}")
+
+            total_contacts_created += len(created_ids)
+
+            print(f"{len(created_ids)} contatos criados de {total_contacts}.")  # type: ignore
+
+        else:
+            print("Nenhum contato foi carregado.\n")
 
     except Exception as e:
         print(f"Erro ao criar contatos: {e}")
@@ -175,13 +177,34 @@ def main():
     uid = authenticate(odoo_url, odoo_db, odoo_username, odoo_password)
     if uid:
         # get the contacts from csv
-        contacts = import_csv_contacts("test.csv")
+        contacts = import_csv_contacts("stress_test.csv")
 
         if contacts:
             print(f"\nTotal de contatos para serem carregados: {len(contacts)}\n")
 
-            # create contacts from the array of contacts
-            create_contacts(odoo_url, odoo_db, uid, odoo_password, contacts)
+            def chunker(iterable, size):
+                for i in range(0, len(iterable), size):
+                    yield iterable[i : i + size]
+
+            models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_url))
+            contacts_db = (
+                get_existing_contacts(models, odoo_db, uid, odoo_password) or []
+            )
+            existing_emails = {c["email"] for c in contacts_db if c.get("email")}  # type: ignore
+
+            # create contacts in batches to avoid overload in odoo or local memory
+            for batch in chunker(contacts, 1000):
+                create_contacts(
+                    odoo_db,
+                    uid,
+                    odoo_password,
+                    batch,
+                    models,
+                    existing_emails,
+                    len(contacts),
+                )
+
+            print(f"\nTotal de contatos carregados: {total_contacts_created}\n")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,3 @@
-Perfeito. Vou mostrar **o jeito mais descartável possível**, nível “liguei, testei, apaguei, sumiu”.
-
-Isso é **Docker em modo totalmente efêmero**.
-
----
-
 # ✅ Rodar Odoo 100% descartável (sem volumes, sem persistência)
 
 ## Conceito (importante)
