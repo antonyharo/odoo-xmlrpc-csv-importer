@@ -5,7 +5,7 @@ import xmlrpc.client
 
 from dotenv import load_dotenv
 
-from get_ids import get_country_id, get_existing_contacts, get_state_id
+from get_ids import get_country_id, get_state_id
 
 load_dotenv()
 
@@ -34,8 +34,6 @@ def import_csv_contacts(file_name):
 
             # control sets to avoid duplicated contacts
             seen_emails = set()
-
-            print("\nRegistros válidos do arquivo:")
 
             # get the contact info from the csv file
             for row_index, row in enumerate(reader, start=1):
@@ -67,9 +65,6 @@ def import_csv_contacts(file_name):
                     )
                     continue
 
-                print(
-                    f"Registro {row_index}, Nome: {contact['name']}, Email: {contact['email']}"
-                )
                 contacts.append(contact)
 
             if invalid_contacts:
@@ -125,17 +120,30 @@ def get_state_id_cached(models, db, uid, password, country_id, state_name):
 
 
 # create the contacts using the cache feature
-def create_contacts(
-    db, uid, password, contacts, models, existing_emails, total_contacts
-):
+def create_contacts(db, uid, password, contacts, models, total_contacts):
     global total_contacts_created
 
     try:
         contacts_to_create: list[dict] = []
 
+        set_emails_csv = {c["email"] for c in contacts}  # type: ignore
+        records_db = models.execute_kw(
+            db,
+            uid,
+            password,
+            "res.partner",
+            "search_read",
+            [[["email", "in", list(set_emails_csv)]]],
+            {"fields": ["email"]},
+        )
+
+        set_emails_db = {r["email"] for r in records_db if r.get("email")}
+
+        print(set_emails_db)
+
         # sanitize data to contain ids or to identidy if already exists in db
         for contact in contacts:
-            if contact["email"] in existing_emails:
+            if contact["email"] in set_emails_db:
                 continue
 
             country_id = get_country_id_cached(
@@ -177,7 +185,7 @@ def main():
     uid = authenticate(odoo_url, odoo_db, odoo_username, odoo_password)
     if uid:
         # get the contacts from csv
-        contacts = import_csv_contacts("stress_test.csv")
+        contacts = import_csv_contacts("test.csv")
 
         if contacts:
             print(f"\nTotal de contatos para serem carregados: {len(contacts)}\n")
@@ -187,10 +195,6 @@ def main():
                     yield iterable[i : i + size]
 
             models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_url))
-            contacts_db = (
-                get_existing_contacts(models, odoo_db, uid, odoo_password) or []
-            )
-            existing_emails = {c["email"] for c in contacts_db if c.get("email")}  # type: ignore
 
             # create contacts in batches to avoid overload in odoo or local memory
             for batch in chunker(contacts, 1000):
@@ -200,7 +204,6 @@ def main():
                     odoo_password,
                     batch,
                     models,
-                    existing_emails,
                     len(contacts),
                 )
 
