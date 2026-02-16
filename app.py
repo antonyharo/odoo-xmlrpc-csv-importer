@@ -1,16 +1,25 @@
 import csv
 import os
+import threading
 import time
 import xmlrpc.client
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from get_ids import get_country_id, get_state_id
+from utils import chunker
 
 load_dotenv()
+file_lock = threading.Lock()
 
+DLQ_FILE = "failed_records.csv"
 
-# cache dictionaries for the country and state
 country_cache = {}
 state_cache = {}
 
@@ -98,75 +107,99 @@ def get_state_id_cached(models, db, uid, password, country_id, state_name):
     return state_id
 
 
-# create the contacts using the cache feature
-def create_contacts(db, uid, password, contacts, models):
-    global total_contacts_created
+def log_to_dlq(batch, error_msg):
+    with file_lock:  # Só uma thread escreve por vez
+        file_exists = os.path.isfile(DLQ_FILE)
+        try:
+            with open(DLQ_FILE, mode="a", newline="", encoding="utf-8") as file:
+                if batch:
+                    # Garantimos que o cabeçalho inclua a nova coluna de erro
+                    fieldnames = list(batch[0].keys()) + ["error_log"]
+                    writer = csv.DictWriter(file, fieldnames=fieldnames)
 
-    try:
-        contacts_to_create: list[dict] = []
+                    if not file_exists:
+                        writer.writeheader()
 
-        set_emails_csv = {c["email"] for c in contacts}  # type: ignore
-        records_db = models.execute_kw(
-            db,
-            uid,
-            password,
-            "res.partner",
-            "search_read",
-            [[["email", "in", list(set_emails_csv)]]],
-            {"fields": ["email"]},
+                    for row in batch:
+                        row["error_log"] = str(error_msg)
+                        writer.writerow(row)
+        except Exception as e:
+            print(f"CRÍTICO: Falha ao escrever no DLQ: {e}")
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry_error_callback=lambda retry_state: retry_state.outcome.result(),  # type: ignore
+)
+def create_contacts_with_retry(db, url, uid, password, contacts):
+    # global total_contacts_created
+
+    # CADA THREAD CRIA SEU PRÓPRIO PROXY (Isolamento de Socket)
+    models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(url))
+
+    contacts_to_create: list[dict] = []
+
+    set_emails_csv = {c["email"] for c in contacts}  # type: ignore
+
+    # target search
+    records_db = models.execute_kw(
+        db,
+        uid,
+        password,
+        "res.partner",
+        "search_read",
+        [[["email", "in", list(set_emails_csv)]]],
+        {"fields": ["email"]},
+    )
+
+    set_emails_db = {r["email"] for r in records_db if r.get("email")}  # type: ignore
+
+    # sanitize data to contain ids or to identidy if already exists in db
+    for contact in contacts:
+        if contact["email"] in set_emails_db:
+            continue
+
+        # O cache global (dicts) é thread-safe em Python para operações simples
+        # Mas em produção pesada, usaríamos um Lock. Para agora, está ok.
+        country_id = get_country_id_cached(
+            models, db, uid, password, contact["country_id"]
+        )
+        state_id = get_state_id_cached(
+            models, db, uid, password, country_id, contact["state_id"]
         )
 
-        set_emails_db = {r["email"] for r in records_db if r.get("email")}
+        contact["country_id"] = country_id if country_id else False
+        contact["state_id"] = state_id if state_id else False
 
-        # sanitize data to contain ids or to identidy if already exists in db
-        for contact in contacts:
-            if contact["email"] in set_emails_db:
-                continue
+        contacts_to_create.append(contact)
 
-            country_id = get_country_id_cached(
-                models, db, uid, password, contact["country_id"]
-            )
-            state_id = get_state_id_cached(
-                models, db, uid, password, country_id, contact["state_id"]
-            )
+    if contacts_to_create:
+        models.execute_kw(
+            db, uid, password, "res.partner", "create", [contacts_to_create]
+        )
 
-            contact["country_id"] = country_id if country_id else False
-            contact["state_id"] = state_id if state_id else False
+        return len(contacts_to_create)  # sucess
 
-            contacts_to_create.append(contact)
+    return 0
 
-        if contacts_to_create:
-            created_ids = models.execute_kw(
-                db, uid, password, "res.partner", "create", [contacts_to_create]
-            )
 
-            total_contacts_created += len(created_ids)
-            print(f"Lote processado: {len(created_ids)} novos contatos criados.")
-
-        else:
-            print("Lote processado: Nenhum contato novo encontrado.")
-
+def process_batch_safe(db, url, uid, password, batch):
+    """Wrapper para capturar falhas finais e jogar na DLQ"""
+    try:
+        count = create_contacts_with_retry(db, url, uid, password, batch)
+        print(f"Lote processado: {count} criados.")
     except Exception as e:
-        print(f"Erro ao criar contatos: {e}")
-
-
-def chunker(iterable, size):
-    batch = []
-    for item in iterable:
-        batch.append(item)
-        if len(batch) == size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
+        print(f"ERRO FINAL NO LOTE: {e} -> Enviando para DLQ...")
+        log_to_dlq(batch, str(e))
 
 
 def main(file_name):
     # get the credentials
-    odoo_url = os.getenv("ODOO_URL")
-    odoo_db = os.getenv("ODOO_DB")
-    odoo_username = os.getenv("ODOO_USERNAME")
-    odoo_password = os.getenv("ODOO_PASSWORD")
+    url = os.getenv("ODOO_URL")
+    db = os.getenv("ODOO_DB")
+    username = os.getenv("ODOO_USERNAME")
+    password = os.getenv("ODOO_PASSWORD")
 
     print("\nBem vindo ao importador de contatos .CSV!")
 
@@ -176,26 +209,27 @@ def main(file_name):
         return
 
     # try to authenticate the user and get the uid
-    uid = authenticate(odoo_url, odoo_db, odoo_username, odoo_password)
+    uid = authenticate(url, db, username, password)
     if uid:
         # get the contacts from csv
         contacts_stream = stream_csv_contacts(file_name)
 
-        if contacts_stream:
-            models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_url))
+        print("\nCarregando lotes...")
 
+        with ThreadPoolExecutor(max_workers=4) as executor:
             # create contacts in batches to avoid overload in odoo or local memory
             for batch in chunker(contacts_stream, 1000):
-                create_contacts(
-                    odoo_db,
+                executor.submit(
+                    process_batch_safe,
+                    db,
+                    url,
                     uid,
-                    odoo_password,
+                    password,
                     batch,
-                    models,
                 )
 
-            print("\nImportação finalizada! ;)")
-            print(f"Total de novos contatos no banco: {total_contacts_created}\n")
+        print("\nImportação finalizada! ;)")
+        # print(f"Total de novos contatos no banco: {total_contacts_created}\n")
 
 
 if __name__ == "__main__":
