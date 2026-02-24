@@ -4,7 +4,9 @@ import threading
 import time
 import xmlrpc.client
 from concurrent.futures import ThreadPoolExecutor
+from typing import Annotated
 
+import typer
 from dotenv import load_dotenv
 from tenacity import (
     retry,
@@ -12,7 +14,8 @@ from tenacity import (
     wait_exponential,
 )
 
-from get_ids import get_country_id, get_state_id
+from cache import get_country_id_cached, get_state_id_cached
+from rpc import authenticate
 from utils import chunker
 
 load_dotenv()
@@ -20,10 +23,10 @@ file_lock = threading.Lock()
 
 DLQ_FILE = "failed_records.csv"
 
-country_cache = {}
-state_cache = {}
+COUNTRY_CACHE = {}
+STATE_CACHE = {}
 
-total_contacts_created = 0  # this will be used as a counter
+app = typer.Typer()
 
 
 # import csv data and return an array of contacts (com verificação de duplicatas no CSV)
@@ -66,47 +69,6 @@ def stream_csv_contacts(file_name):
         print(f"Erro ao carregar o arquivo: {e}")
 
 
-# authenticate the user information to return uid
-def authenticate(url, db, username, password):
-    try:
-        common = xmlrpc.client.ServerProxy("{}/xmlrpc/2/common".format(url))
-        uid = common.authenticate(db, username, password, {})
-
-        if not uid:
-            raise ValueError("Falha na autenticação. Verifique as credenciais.")
-        return uid
-
-    except Exception as e:
-        print(f"Erro ao autenticar: {e}")
-
-
-# check if the country_id already exists or search and save in the cache
-def get_country_id_cached(models, db, uid, password, country_name):
-    if country_name in country_cache:
-        return country_cache[country_name]
-
-    country_id = get_country_id(models, db, uid, password, country_name)
-    if country_id:
-        country_cache[country_name] = country_id
-
-    return country_id
-
-
-# check if the state_id already exists or search and save in the cache
-def get_state_id_cached(models, db, uid, password, country_id, state_name):
-    # creates a unique key using the country and state, making sure states with the same name in different countries are treated separately
-    state_cache_key = (country_id, state_name)
-
-    if state_cache_key in state_cache:
-        return state_cache[state_cache_key]
-
-    state_id = get_state_id(models, db, uid, password, country_id, state_name)
-    if state_id:
-        state_cache[state_cache_key] = state_id
-
-    return state_id
-
-
 def log_to_dlq(batch, error_msg):
     with file_lock:  # Só uma thread escreve por vez
         file_exists = os.path.isfile(DLQ_FILE)
@@ -132,9 +94,7 @@ def log_to_dlq(batch, error_msg):
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry_error_callback=lambda retry_state: retry_state.outcome.result(),  # type: ignore
 )
-def create_contacts_with_retry(db, url, uid, password, contacts):
-    # global total_contacts_created
-
+def load_contacts(db, url, uid, password, contacts):
     # CADA THREAD CRIA SEU PRÓPRIO PROXY (Isolamento de Socket)
     models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(url))
 
@@ -163,10 +123,21 @@ def create_contacts_with_retry(db, url, uid, password, contacts):
         # O cache global (dicts) é thread-safe em Python para operações simples
         # Mas em produção pesada, usaríamos um Lock. Para agora, está ok.
         country_id = get_country_id_cached(
-            models, db, uid, password, contact["country_id"]
+            models=models,
+            db=db,
+            uid=uid,
+            password=password,
+            country_name=contact["country_id"],
+            country_cache=COUNTRY_CACHE,
         )
         state_id = get_state_id_cached(
-            models, db, uid, password, country_id, contact["state_id"]
+            models=models,
+            db=db,
+            uid=uid,
+            password=password,
+            country_id=country_id,
+            state_name=contact["state_id"],
+            state_cache=STATE_CACHE,
         )
 
         contact["country_id"] = country_id if country_id else False
@@ -179,7 +150,7 @@ def create_contacts_with_retry(db, url, uid, password, contacts):
             db, uid, password, "res.partner", "create", [contacts_to_create]
         )
 
-        return len(contacts_to_create)  # sucess
+        return len(contacts_to_create)
 
     return 0
 
@@ -187,14 +158,14 @@ def create_contacts_with_retry(db, url, uid, password, contacts):
 def process_batch_safe(db, url, uid, password, batch):
     """Wrapper para capturar falhas finais e jogar na DLQ"""
     try:
-        count = create_contacts_with_retry(db, url, uid, password, batch)
+        count = load_contacts(db, url, uid, password, batch)
         print(f"Lote processado: {count} criados.")
     except Exception as e:
         print(f"ERRO FINAL NO LOTE: {e} -> Enviando para DLQ...")
         log_to_dlq(batch, str(e))
 
 
-def main(file_name):
+def odoo_etl(file_name, max_workers, batch_size):
     # get the credentials
     url = os.getenv("ODOO_URL")
     db = os.getenv("ODOO_DB")
@@ -216,9 +187,9 @@ def main(file_name):
 
         print("\nCarregando lotes...")
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # create contacts in batches to avoid overload in odoo or local memory
-            for batch in chunker(contacts_stream, 1000):
+            for batch in chunker(contacts_stream, batch_size):
                 executor.submit(
                     process_batch_safe,
                     db,
@@ -229,14 +200,24 @@ def main(file_name):
                 )
 
         print("\nImportação finalizada! ;)")
-        # print(f"Total de novos contatos no banco: {total_contacts_created}\n")
+
+
+def main(
+    file_name: Annotated[str, typer.Argument(help=".CSV file to import.")],
+    batch_size: Annotated[
+        int, typer.Option(help="Total of contacts to create in each batch")
+    ] = 1000,
+    max_workers: Annotated[
+        int,
+        typer.Option(help="Total of threads to perform in contacts creation."),
+    ] = 4,
+):
+    start_time = time.time()
+    odoo_etl(file_name, max_workers, batch_size)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Tempo de execução: {elapsed_time:.2f} segundos")
 
 
 if __name__ == "__main__":
-    start_time = time.time()
-    main("stress_test.csv")
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(
-        f"Tempo de execução: {elapsed_time:.2f} segundos"
-    )  # print the execution time of the main()
+    typer.run(main)

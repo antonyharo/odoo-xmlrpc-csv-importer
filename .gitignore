@@ -1,2 +1,6 @@
 .env
 __pycache__
+csv_generator.py
+odoo_manager.py
+test.csv
+private
