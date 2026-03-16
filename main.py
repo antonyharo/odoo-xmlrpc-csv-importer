@@ -1,8 +1,9 @@
-from application import odoo_etl
+import time
 from typing import Annotated
 
-import time
 import typer
+
+from application.odoo_etl import odoo_etl
 
 
 def main(

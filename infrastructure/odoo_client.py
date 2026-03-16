@@ -1,19 +1,20 @@
 import xmlrpc.client
 
+
 class OdooClient:
-    def __init__(self, url, db, username, password):
-        self.url = url
-        self.db = db
-        self.username = username
-        self.password = password
+    def __init__(self, *, url: str, db: str, username: str, password: str):
+        self.url: str = url
+        self.db: str = db
+        self.username: str = username
+        self.password: str = password
 
         self.uid = self.authenticate()
 
-    def authenticate(url, db, username, password):
+    def authenticate(self):
         """authenticate the user information to return uid"""
         try:
-            common = xmlrpc.client.ServerProxy("{}/xmlrpc/2/common".format(url))
-            uid = common.authenticate(db, username, password, {})
+            common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
+            uid = common.authenticate(self.db, self.username, self.password, {})
 
             if not uid:
                 raise ValueError("Falha na autenticação. Verifique as credenciais.")
@@ -22,42 +23,47 @@ class OdooClient:
         except Exception as e:
             print(f"Erro ao autenticar: {e}")
 
-
-    def get_country_id(models, db, uid, password, country_name):
+    def get_country_id(self, models, country_name: str):
         """get the country id based on the country name"""
         country_ids = models.execute_kw(
-            db, uid, password, "res.country", "search", [[("name", "=", country_name)]]
+            self.db,
+            self.uid,
+            self.password,
+            "res.country",
+            "search",
+            [[("name", "=", country_name)]],
         )
-        return country_ids[0] if country_ids else False
+        return country_ids[0] if country_ids else False  # type: ignore
 
-
-    def get_state_id(models, db, uid, password, country_id, state_name):
+    def get_state_id(self, models, country_id, state_name: str):
         """get the state id based on the state name"""
         state_ids = models.execute_kw(
-            db,
-            uid,
-            password,
+            self.db,
+            self.uid,
+            self.password,
             "res.country.state",
             "search",
             [[("name", "=", state_name), ("country_id", "=", country_id)]],
         )
-        return state_ids[0] if state_ids else False
+        return state_ids[0] if state_ids else False  # type: ignore
 
-
-    def get_existing_contacts(models, db, uid, password):
-        """get all contacts from odoo"""
-        try:
-            existing_contacts = models.execute_kw(
-                db,
-                uid,
-                password,
+    def search_records(self, models, set_emails: set) -> list:
+        records_db = (
+            models.execute_kw(
+                self.db,
+                self.uid,
+                self.password,
                 "res.partner",
                 "search_read",
-                [[("name", "!=", False), ("email", "!=", False)]],
-                {"fields": ["name", "email"]},
+                [[["email", "in", list(set_emails)]]],
+                {"fields": ["email"]},
             )
-            return existing_contacts
+            or []
+        )
 
-        except Exception as e:
-            print(f"Erro ao buscar contatos existentes: {e}")
-            return []
+        return records_db
+
+    def create_contacts(self, models, contacts):
+        models.execute_kw(
+            self.db, self.uid, self.password, "res.partner", "create", [contacts]
+        )

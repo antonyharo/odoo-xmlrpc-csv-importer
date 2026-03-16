@@ -2,30 +2,24 @@ import os
 import threading
 import xmlrpc.client
 from concurrent.futures import ThreadPoolExecutor
-from typing import Annotated
 
-import typer
-from dotenv import load_dotenv
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
 )
 
-from cache import get_country_id_cached, get_state_id_cached
+from infrastructure.cache_manager import CacheManager
 from infrastructure.csv_manager import CsvManager
-from rpc import authenticate
-from utils import chunker
-
-load_dotenv()
-file_lock = threading.Lock()
+from infrastructure.odoo_client import OdooClient
+from utils.utils import chunker, require_env
 
 DLQ_FILE = "failed_records.csv"
 
 COUNTRY_CACHE = {}
 STATE_CACHE = {}
 
-app = typer.Typer()
+file_lock = threading.Lock()
 
 
 @retry(
@@ -33,50 +27,40 @@ app = typer.Typer()
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry_error_callback=lambda retry_state: retry_state.outcome.result(),  # type: ignore
 )
-def load_contacts(db, url, uid, password, contacts):
-    # CADA THREAD CRIA SEU PRÓPRIO PROXY (Isolamento de Socket)
-    models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(url))
+def load_contacts(odoo_client, contacts):
+    """Load CSV records on Odoo"""
+
+    # Each thread creates its own proxy
+    models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_client.url))
 
     contacts_to_create: list[dict] = []
 
-    set_emails_csv = {c["email"] for c in contacts}  # type: ignore
+    set_emails_csv = {c["email"] for c in contacts}
 
-    # target search
-    records_db = models.execute_kw(
-        db,
-        uid,
-        password,
-        "res.partner",
-        "search_read",
-        [[["email", "in", list(set_emails_csv)]]],
-        {"fields": ["email"]},
-    )
-
+    records_db = odoo_client.search_records(models, set_emails_csv)
     set_emails_db = {r["email"] for r in records_db if r.get("email")}  # type: ignore
 
-    # sanitize data to contain ids or to identidy if already exists in db
+    # sanitize data to contain ids or to identify if already exists in db
     for contact in contacts:
         if contact["email"] in set_emails_db:
             continue
 
         # O cache global (dicts) é thread-safe em Python para operações simples
         # Mas em produção pesada, usaríamos um Lock. Para agora, está ok.
-        country_id = get_country_id_cached(
+
+        cache_manager = CacheManager(COUNTRY_CACHE, STATE_CACHE)
+
+        country_id = cache_manager.get_country_id_cached(
             models=models,
-            db=db,
-            uid=uid,
-            password=password,
             country_name=contact["country_id"],
-            country_cache=COUNTRY_CACHE,
+            get_country_id=odoo_client.get_country_id,
         )
-        state_id = get_state_id_cached(
+
+        state_id = cache_manager.get_state_id_cached(
             models=models,
-            db=db,
-            uid=uid,
-            password=password,
             country_id=country_id,
             state_name=contact["state_id"],
-            state_cache=STATE_CACHE,
+            get_state_id=odoo_client.get_state_id,
         )
 
         contact["country_id"] = country_id if country_id else False
@@ -85,19 +69,17 @@ def load_contacts(db, url, uid, password, contacts):
         contacts_to_create.append(contact)
 
     if contacts_to_create:
-        models.execute_kw(
-            db, uid, password, "res.partner", "create", [contacts_to_create]
-        )
+        odoo_client.create_contacts(models, contacts_to_create)
 
         return len(contacts_to_create)
 
     return 0
 
 
-def load_contacts_safe(db, url, uid, password, batch, csv_manager):
+def load_contacts_safe(odoo_client, batch, csv_manager):
     """Wrapper para capturar falhas finais e jogar na DLQ"""
     try:
-        count = load_contacts(db, url, uid, password, batch)
+        count = load_contacts(odoo_client, batch)
         print(f"Lote processado: {count} criados.")
     except Exception as e:
         print(f"ERRO FINAL NO LOTE: {e} -> Enviando para DLQ...")
@@ -105,11 +87,10 @@ def load_contacts_safe(db, url, uid, password, batch, csv_manager):
 
 
 def odoo_etl(file_name, max_workers, batch_size):
-    # get the credentials
-    url = os.getenv("ODOO_URL")
-    db = os.getenv("ODOO_DB")
-    username = os.getenv("ODOO_USERNAME")
-    password = os.getenv("ODOO_PASSWORD")
+    url = require_env("ODOO_URL")
+    db = require_env("ODOO_DB")
+    username = require_env("ODOO_USERNAME")
+    password = require_env("ODOO_PASSWORD")
 
     print("\nBem vindo ao importador de contatos .CSV!")
 
@@ -118,25 +99,17 @@ def odoo_etl(file_name, max_workers, batch_size):
         print(f"Arquivo '{file_name}' não encontrado no diretório atual.")
         return
 
-    # try to authenticate the user and get the uid
-    uid = authenticate(url, db, username, password)
-    if uid:
-        csv_manager = CsvManager(file_name)
-        contacts_stream = csv_manager.stream_csv_contacts(file_name)
+    odoo_client = OdooClient(url=url, db=db, username=username, password=password)
+
+    if odoo_client:
+        csv_manager = CsvManager(file_name, DLQ_FILE)
+        contacts_stream = csv_manager.stream_csv_contacts()
 
         print("\nCarregando lotes...")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # create contacts in batches to avoid overload in odoo or local memory
             for batch in chunker(contacts_stream, batch_size):
-                executor.submit(
-                    load_contacts_safe,
-                    db,
-                    url,
-                    uid,
-                    password,
-                    batch,
-                    csv_manager
-                )
+                executor.submit(load_contacts_safe, odoo_client, batch, csv_manager)
 
         print("\nImportação finalizada! ;)")

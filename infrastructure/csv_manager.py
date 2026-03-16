@@ -6,13 +6,14 @@ file_lock = threading.Lock()
 
 
 class CsvManager:
-    def __init__(self, file: str) -> None:
-        self.file = file
+    def __init__(self, contacts_file: str, dlq_file: str) -> None:
+        self.contacts_file = contacts_file
+        self.dlq_file = dlq_file
 
-    def stream_csv_contacts(file_name: str):
+    def stream_csv_contacts(self):
         """import csv data and return an array of contacts with deduplication"""
         try:
-            with open(file_name, mode="r", newline="", encoding="utf-8") as file:
+            with open(self.contacts_file, mode="r", newline="", encoding="utf-8") as file:
                 reader = csv.DictReader(file)
 
                 seen_emails = set()
@@ -34,11 +35,11 @@ class CsvManager:
         except Exception as e:
             print(f"Erro ao carregar o arquivo: {e}")
 
-    def log_to_dlq(dlq_file: str, batch: list, error_msg: str):
+    def log_to_dlq(self, batch: list, error_msg: str):
         with file_lock:
-            file_exists = os.path.isfile(dlq_file)
+            file_exists = os.path.isfile(self.dlq_file)
             try:
-                with open(dlq_file, mode="a", newline="", encoding="utf-8") as file:
+                with open(self.dlq_file, mode="a", newline="", encoding="utf-8") as file:
                     if batch:
                         # Garantimos que o cabeçalho inclua a nova coluna de erro
                         fieldnames = list(batch[0].keys()) + ["error_log"]
