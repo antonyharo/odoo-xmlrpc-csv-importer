@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 import xmlrpc.client
 from concurrent.futures import ThreadPoolExecutor
 
@@ -9,10 +10,10 @@ from tenacity import (
     wait_exponential,
 )
 
-from infrastructure.cache_manager import CacheManager
-from infrastructure.csv_manager import CsvManager
-from infrastructure.odoo_client import OdooClient
-from utils.utils import chunker, require_env
+from odoo_xmlrpc_csv_importer.infrastructure.csv_manager import CsvManager
+from odoo_xmlrpc_csv_importer.infrastructure.odoo_client import OdooClient
+from odoo_xmlrpc_csv_importer.services.reference_cache import ReferenceCache
+from odoo_xmlrpc_csv_importer.utils.utils import chunker, require_env
 
 DLQ_FILE = "failed_records.csv"
 
@@ -48,15 +49,15 @@ def load_contacts(odoo_client, contacts):
         # O cache global (dicts) é thread-safe em Python para operações simples
         # Mas em produção pesada, usaríamos um Lock. Para agora, está ok.
 
-        cache_manager = CacheManager(COUNTRY_CACHE, STATE_CACHE)
+        reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
 
-        country_id = cache_manager.get_country_id_cached(
+        country_id = reference_cache.get_country_id_cached(
             models=models,
             country_name=contact["country_id"],
             get_country_id=odoo_client.get_country_id,
         )
 
-        state_id = cache_manager.get_state_id_cached(
+        state_id = reference_cache.get_state_id_cached(
             models=models,
             country_id=country_id,
             state_name=contact["state_id"],
@@ -87,6 +88,7 @@ def load_contacts_safe(odoo_client, batch, csv_manager):
 
 
 def odoo_etl(file_name, max_workers, batch_size):
+    start_time = time.time()
     url = require_env("ODOO_URL")
     db = require_env("ODOO_DB")
     username = require_env("ODOO_USERNAME")
@@ -113,3 +115,8 @@ def odoo_etl(file_name, max_workers, batch_size):
                 executor.submit(load_contacts_safe, odoo_client, batch, csv_manager)
 
         print("\nImportação finalizada! ;)")
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print(f"Tempo de execução: {elapsed_time:.2f} segundos")

@@ -65,7 +65,7 @@ wheels = [
 [[package]]
 name = "odoo-xmlrpc-csv-importer"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "pydantic-settings" },
     { name = "tenacity" },

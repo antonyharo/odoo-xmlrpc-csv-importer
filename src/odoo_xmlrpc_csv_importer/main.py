@@ -1,11 +1,12 @@
-import time
 from typing import Annotated
 
 import typer
 
-from application.odoo_etl import odoo_etl
+from odoo_xmlrpc_csv_importer.application.odoo_etl import odoo_etl
 
+app = typer.Typer()
 
+@app.command()
 def main(
     file_name: Annotated[str, typer.Argument(help=".CSV file to import.")],
     batch_size: Annotated[
@@ -16,12 +17,8 @@ def main(
         typer.Option(help="Total of threads to perform in contacts creation."),
     ] = 4,
 ):
-    start_time = time.time()
     odoo_etl(file_name, max_workers, batch_size)
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"Tempo de execução: {elapsed_time:.2f} segundos")
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    app()

@@ -1,4 +1,4 @@
-class CacheManager:
+class ReferenceCache:
     def __init__(self, country_cache, state_cache):
         self.country_cache = country_cache
         self.state_cache = state_cache
