@@ -65,14 +65,14 @@ Caso prefira rodar localmente usando o gerenciador `uv`:
 uv sync --frozen
 
 # Executa o CLI do projeto
-uv run etl data/contacts.csv --max-workers 4 --batch-size 1000
+uv run etl data/test.csv --max-workers 4 --batch-size 1000
 ```
 
 ## Documentação do CLI (Typer)
 
 A aplicação fornece uma interface de linha de comando robusta:
 
-```bash
+```
 Usage: etl [OPTIONS] FILE_NAME
 
 Arguments:
@@ -84,7 +84,7 @@ Options:
   --help                 Exibe esta mensagem e sai.
 ```
 
-### ⚠️ Cuidados com a Escala (`max-workers`)
+### Cuidados com a Escala (`max-workers`)
 O Odoo utiliza Gunicorn/WSGI processando requisições de forma síncrona. Um número excessivo de `max-workers` (ex: `> 10`) não aumentará a velocidade local; em vez disso, esgotará o pool de conexões do PostgreSQL no servidor Odoo (`Connection Refused`). Recomendamos manter entre **2 e 5 workers**, ajustando o `batch-size` conforme a capacidade de memória do servidor destino.
 
 ## Estrutura do CSV
