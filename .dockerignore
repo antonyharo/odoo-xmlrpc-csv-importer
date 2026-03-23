@@ -16,6 +16,5 @@ Dockerfile
 docker-compose.yaml
 .dockerignore
 
-README.md
 .vscode/
 .idea/

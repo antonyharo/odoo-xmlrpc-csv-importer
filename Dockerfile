@@ -5,9 +5,11 @@ WORKDIR /app
 RUN pip install uv
 
 COPY pyproject.toml uv.lock ./
+COPY src ./src
+COPY README.md ./
 
 RUN uv sync --frozen
 
 COPY . .
 
-ENTRYPOINT ["uv", "run","etl"]
+ENTRYPOINT ["uv", "run", "etl"]

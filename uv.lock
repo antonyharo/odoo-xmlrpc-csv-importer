@@ -67,6 +67,7 @@ name = "odoo-xmlrpc-csv-importer"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "tenacity" },
     { name = "typer" },
@@ -74,6 +75,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "typer", specifier = ">=0.24.1" },
