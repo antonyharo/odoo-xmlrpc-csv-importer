@@ -39,16 +39,14 @@ def load_contacts(odoo_client, contacts):
     set_emails_csv = {c["email"] for c in contacts}
 
     records_db = odoo_client.search_records(models, set_emails_csv)
-    set_emails_db = {r["email"] for r in records_db if r.get("email")}  # type: ignore
+    set_emails_db = {r["email"] for r in records_db if r.get("email")}
 
     # sanitize data to contain ids or to identify if already exists in db
     for contact in contacts:
         if contact["email"] in set_emails_db:
             continue
-
-        # O cache global (dicts) é thread-safe em Python para operações simples
-        # Mas em produção pesada, usaríamos um Lock. Para agora, está ok.
-
+        
+        # Thread safe in local env
         reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
 
         country_id = reference_cache.get_country_id_cached(
@@ -78,12 +76,12 @@ def load_contacts(odoo_client, contacts):
 
 
 def load_contacts_safe(odoo_client, batch, csv_manager):
-    """Wrapper para capturar falhas finais e jogar na DLQ"""
+    """Wrapper to capture final errors and log into DLQ"""
     try:
         count = load_contacts(odoo_client, batch)
         print(f"Lote processado: {count} criados.")
     except Exception as e:
-        print(f"ERRO FINAL NO LOTE: {e} -> Enviando para DLQ...")
+        print(f"ERRO NO LOTE: {e}")
         csv_manager.log_to_dlq(DLQ_FILE, batch, str(e))
 
 

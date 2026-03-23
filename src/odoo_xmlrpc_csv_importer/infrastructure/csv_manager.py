@@ -11,7 +11,7 @@ class CsvManager:
         self.dlq_file = dlq_file
 
     def stream_csv_contacts(self):
-        """import csv data and return an array of contacts with deduplication"""
+        """Import csv data and return an array of contacts with deduplication"""
         try:
             with open(self.contacts_file, mode="r", newline="", encoding="utf-8") as file:
                 reader = csv.DictReader(file)
@@ -21,7 +21,7 @@ class CsvManager:
                 for row in reader:
                     contact_email = (row.get("email") or "").strip()
 
-                    # if the contact is not valid, send to an separated file -> problematic data                        
+                    # If the contact is not valid, send to an separated file -> problematic data                        
                     if not row.get("email") or not row.get("name"):
                         continue
 
@@ -36,12 +36,13 @@ class CsvManager:
             print(f"Erro ao carregar o arquivo: {e}")
 
     def log_to_dlq(self, batch: list, error_msg: str):
+        """Log into DLQ file with an new error column"""
         with file_lock:
             file_exists = os.path.isfile(self.dlq_file)
             try:
                 with open(self.dlq_file, mode="a", newline="", encoding="utf-8") as file:
                     if batch:
-                        # Garantimos que o cabeçalho inclua a nova coluna de erro
+                        # Include the new error column into the csv headline
                         fieldnames = list(batch[0].keys()) + ["error_log"]
                         writer = csv.DictWriter(file, fieldnames=fieldnames)
 
