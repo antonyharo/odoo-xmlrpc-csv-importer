@@ -32,7 +32,11 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect((\"127.0.0.1\", 8069))'"]
+      test:
+        [
+          "CMD-SHELL",
+          'python3 -c ''import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect(("127.0.0.1", 8069))''',
+        ]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -47,6 +51,7 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./src:/app/src
     depends_on:
       odoo:
         condition: service_healthy

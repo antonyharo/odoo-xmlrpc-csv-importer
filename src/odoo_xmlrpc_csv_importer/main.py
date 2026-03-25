@@ -3,8 +3,12 @@ from typing import Annotated
 import typer
 
 from odoo_xmlrpc_csv_importer.application.odoo_etl import odoo_etl
+from odoo_xmlrpc_csv_importer.infrastructure.config import get_settings
 
 app = typer.Typer()
+
+settings = get_settings()
+
 
 @app.command()
 def main(
@@ -16,8 +20,8 @@ def main(
         int,
         typer.Option(help="Total of threads to perform in contacts creation."),
     ] = 4,
-):
-    odoo_etl(file_name, max_workers, batch_size)
+) -> None:
+    odoo_etl(settings, file_name, max_workers, batch_size)
 
 
 if __name__ == "__main__":

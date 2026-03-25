@@ -28,11 +28,11 @@ file_lock = threading.Lock()
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry_error_callback=lambda retry_state: retry_state.outcome.result(),  # type: ignore
 )
-def load_contacts(odoo_client, contacts):
+def create_contacts(odoo_client, contacts):
     """Load CSV records on Odoo"""
 
     # Each thread creates its own proxy
-    models = xmlrpc.client.ServerProxy("{}/xmlrpc/2/object".format(odoo_client.url))
+    models = xmlrpc.client.ServerProxy(f"{odoo_client.url}/xmlrpc/2/object")
 
     contacts_to_create: list[dict] = []
 
@@ -45,7 +45,7 @@ def load_contacts(odoo_client, contacts):
     for contact in contacts:
         if contact["email"] in set_emails_db:
             continue
-        
+
         # Thread safe in local env
         reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
 
@@ -75,24 +75,23 @@ def load_contacts(odoo_client, contacts):
     return 0
 
 
-def load_contacts_safe(odoo_client, batch, csv_manager):
+def create_contacts_wrapper(odoo_client, batch, csv_manager):
     """Wrapper to capture final errors and log into DLQ"""
     try:
-        count = load_contacts(odoo_client, batch)
+        count = create_contacts(odoo_client, batch)
         print(f"Lote processado: {count} criados.")
     except Exception as e:
-        print(f"ERRO NO LOTE: {e}")
+        print(f"Erro no lote: {e}")
         csv_manager.log_to_dlq(DLQ_FILE, batch, str(e))
 
 
-def odoo_etl(file_name, max_workers, batch_size):
+def odoo_etl(settings, file_name: str, max_workers: int, batch_size: int) -> None:
     start_time = time.time()
-    url = require_env("ODOO_URL")
-    db = require_env("ODOO_DB")
-    username = require_env("ODOO_USERNAME")
-    password = require_env("ODOO_PASSWORD")
 
-    print("\nBem vindo ao importador de contatos .CSV!")
+    url = settings.url
+    db = settings.db
+    username = settings.username
+    password = settings.password.get_secret_value()
 
     print(f"\nDiretório atual: {os.getcwd()}")
     if not os.path.isfile(file_name):
@@ -110,9 +109,11 @@ def odoo_etl(file_name, max_workers, batch_size):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # create contacts in batches to avoid overload in odoo or local memory
             for batch in chunker(contacts_stream, batch_size):
-                executor.submit(load_contacts_safe, odoo_client, batch, csv_manager)
+                executor.submit(
+                    create_contacts_wrapper, odoo_client, batch, csv_manager
+                )
 
-        print("\nImportação finalizada! ;)")
+        print("\nImportação finalizada.")
 
     end_time = time.time()
     elapsed_time = end_time - start_time
