@@ -1,19 +1,22 @@
-import threading
 import csv
 import os
+import threading
+from pathlib import Path
 
 file_lock = threading.Lock()
 
 
 class CsvManager:
-    def __init__(self, contacts_file: str, dlq_file: str) -> None:
+    def __init__(self, contacts_file: Path, dlq_file: str) -> None:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
 
     def stream_csv_contacts(self):
         """Import csv data and return an array of contacts with deduplication"""
         try:
-            with open(self.contacts_file, mode="r", newline="", encoding="utf-8") as file:
+            with open(
+                self.contacts_file, mode="r", newline="", encoding="utf-8"
+            ) as file:
                 reader = csv.DictReader(file)
 
                 seen_emails = set()
@@ -21,7 +24,7 @@ class CsvManager:
                 for row in reader:
                     contact_email = (row.get("email") or "").strip()
 
-                    # If the contact is not valid, send to an separated file -> problematic data                        
+                    # If the contact is not valid, send to an separated file -> problematic data
                     if not row.get("email") or not row.get("name"):
                         continue
 
@@ -40,7 +43,9 @@ class CsvManager:
         with file_lock:
             file_exists = os.path.isfile(self.dlq_file)
             try:
-                with open(self.dlq_file, mode="a", newline="", encoding="utf-8") as file:
+                with open(
+                    self.dlq_file, mode="a", newline="", encoding="utf-8"
+                ) as file:
                     if batch:
                         # Include the new error column into the csv headline
                         fieldnames = list(batch[0].keys()) + ["error_log"]
