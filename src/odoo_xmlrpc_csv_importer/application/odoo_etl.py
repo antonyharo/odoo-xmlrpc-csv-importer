@@ -15,7 +15,8 @@ STATE_CACHE = {}
 def process_batch(odoo_client: OdooClient, batch: list, csv_manager: CsvManager):
     """Process batch of contacts and orquestrates deduplication, cache and load in Odoo"""
     try:
-        # Each thread creates its own proxy
+        start_time = time.time()
+        # Each thread creates its own models proxy
         models = xmlrpc.client.ServerProxy(f"{odoo_client.url}/xmlrpc/2/object")
 
         contacts_to_create: list[dict] = []
@@ -27,7 +28,7 @@ def process_batch(odoo_client: OdooClient, batch: list, csv_manager: CsvManager)
 
         reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
 
-        # sanitize data to get reference ids or to identify if already exists in db
+        # Sanitize data to get reference ids and filter records that already exists in db
         for contact in batch:
             if contact["email"] in set_existing_emails:
                 continue
@@ -46,7 +47,12 @@ def process_batch(odoo_client: OdooClient, batch: list, csv_manager: CsvManager)
         if contacts_to_create:
             odoo_client.create_contacts(models, contacts_to_create)
 
-        print(f"Lote processado: {len(contacts_to_create)} criados.")
+        end_time = time.time()
+        total_time = end_time - start_time
+
+        print(
+            f"Lote processado: {len(contacts_to_create)} contatos criados em {total_time:.2f} segundos."
+        )
     except Exception as e:
         print(f"Erro no lote: {e}")
         csv_manager.log_to_dlq(batch, str(e))
@@ -70,7 +76,7 @@ def odoo_etl(settings, file: Path, max_workers: int, batch_size: int) -> None:
 
         print("\nCarregando lotes...")
 
-        # create contacts in batches to avoid overload in odoo or local memory
+        # Create contacts in batches to avoid overload in odoo or local memory
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for batch in chunker(contacts_stream, batch_size):
                 executor.submit(process_batch, odoo_client, batch, csv_manager)

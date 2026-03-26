@@ -11,6 +11,18 @@ class CsvManager:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
 
+    def _check_valid_contact(self, row, seen_emails):
+        contact_email = (row.get("email") or "").strip()
+
+        if (
+            not contact_email
+            or not (row.get("name") or "").strip()
+            or contact_email in seen_emails
+        ):
+            return False
+
+        return contact_email
+
     def stream_csv_contacts(self):
         """Import csv data and return an array of contacts with deduplication"""
         try:
@@ -22,13 +34,9 @@ class CsvManager:
                 seen_emails = set()
 
                 for row in reader:
-                    contact_email = (row.get("email") or "").strip()
+                    contact_email = self._check_valid_contact(row, seen_emails)
 
-                    # If the contact is not valid, send to a separated file -> problematic data
-                    if not row.get("email") or not row.get("name"):
-                        continue
-
-                    if contact_email in seen_emails:
+                    if not contact_email:
                         continue
 
                     seen_emails.add(contact_email)
@@ -36,7 +44,7 @@ class CsvManager:
                     yield row
 
         except Exception as e:
-            print(f"Erro ao carregar o arquivo: {e}")
+            raise RuntimeError(f"Erro ao carregar o arquivo: {e}")
 
     def log_to_dlq(self, batch: list, error_msg: str):
         """Log into DLQ file with an new error column"""
