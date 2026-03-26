@@ -3,9 +3,7 @@ class ReferenceCache:
         self.country_cache = country_cache
         self.state_cache = state_cache
 
-    def get_state_id_cached(
-        self, *, models, country_id, state_name, get_state_id
-    ):
+    def get_state_id_cached(self, *, models, country_id, state_name, get_state_id):
         """Check if the state_id already exists or search and save in the cache"""
 
         # Creates a unique key using the country and state, making sure states with the same name in different countries are treated separately
@@ -20,9 +18,7 @@ class ReferenceCache:
 
         return state_id
 
-    def get_country_id_cached(
-        self, *, models, country_name, get_country_id
-    ):
+    def get_country_id_cached(self, *, models, country_name, get_country_id):
         """Check if the country_id already exists or search and save in the cache"""
         if country_name in self.country_cache:
             return self.country_cache[country_name]
@@ -32,3 +28,22 @@ class ReferenceCache:
             self.country_cache[country_name] = country_id
 
         return country_id
+
+    def get_contact_reference_ids(
+        self, *, models, country_name: str, state_name: str, odoo_client
+    ) -> tuple:
+        """Get reference IDs to the contact based on existing cache"""
+        country_id = self.get_country_id_cached(
+            models=models,
+            country_name=country_name,
+            get_country_id=odoo_client.get_country_id,
+        )
+
+        state_id = self.get_state_id_cached(
+            models=models,
+            country_id=country_id,
+            state_name=state_name,
+            get_state_id=odoo_client.get_state_id,
+        )
+
+        return country_id if country_id else False, state_id if state_id else False

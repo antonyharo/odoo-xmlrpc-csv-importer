@@ -24,7 +24,7 @@ class CsvManager:
                 for row in reader:
                     contact_email = (row.get("email") or "").strip()
 
-                    # If the contact is not valid, send to an separated file -> problematic data
+                    # If the contact is not valid, send to a separated file -> problematic data
                     if not row.get("email") or not row.get("name"):
                         continue
 

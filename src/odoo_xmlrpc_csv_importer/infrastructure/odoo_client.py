@@ -1,5 +1,11 @@
 import xmlrpc.client
 
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 
 class OdooClient:
     def __init__(self, *, url: str, db: str, username: str, password: str):
@@ -10,6 +16,11 @@ class OdooClient:
 
         self.uid = self.authenticate()
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
     def authenticate(self):
         """authenticate the user information to return uid"""
         try:
@@ -23,6 +34,11 @@ class OdooClient:
         except Exception as e:
             print(f"Erro ao autenticar: {e}")
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
     def get_country_id(self, models, country_name: str):
         """get the country id based on the country name"""
         country_ids = models.execute_kw(
@@ -35,6 +51,11 @@ class OdooClient:
         )
         return country_ids[0] if country_ids else False  # type: ignore
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
     def get_state_id(self, models, country_id, state_name: str):
         """get the state id based on the state name"""
         state_ids = models.execute_kw(
@@ -45,8 +66,13 @@ class OdooClient:
             "search",
             [[("name", "=", state_name), ("country_id", "=", country_id)]],
         )
-        return state_ids[0] if state_ids else False  # type: ignore
+        return state_ids[0] if state_ids else False
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     def search_records(self, models, set_emails: set) -> list:
         records_db = (
             models.execute_kw(
@@ -63,7 +89,13 @@ class OdooClient:
 
         return records_db
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     def create_contacts(self, models, contacts):
+        """Create contacts in Odoo database"""
         models.execute_kw(
             self.db, self.uid, self.password, "res.partner", "create", [contacts]
         )
