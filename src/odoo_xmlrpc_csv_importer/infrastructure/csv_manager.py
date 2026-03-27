@@ -3,6 +3,10 @@ import os
 import threading
 from pathlib import Path
 
+from pydantic import ValidationError
+
+from odoo_xmlrpc_csv_importer.domain.contact import ContactSchema
+
 file_lock = threading.Lock()
 
 
@@ -11,17 +15,17 @@ class CsvManager:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
 
-    def _check_valid_contact(self, row, seen_emails):
-        contact_email = (row.get("email") or "").strip()
+    def _validate_contact(self, row, seen_emails) -> dict:
+        try:
+            contact = ContactSchema(**row)
 
-        if (
-            not contact_email
-            or not (row.get("name") or "").strip()
-            or contact_email in seen_emails
-        ):
-            return False
+            if contact.email in seen_emails:
+                raise ValueError("Registro já existente no arquivo")
 
-        return contact_email
+            return contact.model_dump()
+        except (ValidationError, ValueError) as e:
+            # print(f"Registro inválido: {e}")
+            return {}
 
     def stream_csv_contacts(self):
         """Import csv data and return an array of contacts with deduplication"""
@@ -34,17 +38,17 @@ class CsvManager:
                 seen_emails = set()
 
                 for row in reader:
-                    contact_email = self._check_valid_contact(row, seen_emails)
+                    validated_contact = self._validate_contact(row, seen_emails)
 
-                    if not contact_email:
+                    if not validated_contact:
                         continue
 
-                    seen_emails.add(contact_email)
+                    seen_emails.add(validated_contact["email"])
 
                     yield row
 
         except Exception as e:
-            raise RuntimeError(f"Erro ao carregar o arquivo: {e}")
+            raise RuntimeError(f"Erro durante o stream do arquivo: {e}")
 
     def log_to_dlq(self, batch: list, error_msg: str):
         """Log into DLQ file with an new error column"""

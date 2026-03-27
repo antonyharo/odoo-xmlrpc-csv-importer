@@ -1,5 +1,6 @@
 import xmlrpc.client
 
+from pydantic import HttpUrl
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -8,8 +9,8 @@ from tenacity import (
 
 
 class OdooClient:
-    def __init__(self, *, url: str, db: str, username: str, password: str):
-        self.url: str = url
+    def __init__(self, *, url: HttpUrl, db: str, username: str, password: str):
+        self.url: HttpUrl = url
         self.db: str = db
         self.username: str = username
         self.password: str = password
@@ -19,7 +20,7 @@ class OdooClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
+        reraise=True,
     )
     def authenticate(self):
         """authenticate the user information to return uid"""
@@ -37,7 +38,7 @@ class OdooClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
+        reraise=True,
     )
     def get_country_id(self, models, country_name: str):
         """get the country id based on the country name"""
@@ -54,7 +55,7 @@ class OdooClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
+        reraise=True,
     )
     def get_state_id(self, models, country_id, state_name: str):
         """get the state id based on the state name"""
@@ -73,7 +74,7 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def search_records(self, models, set_emails: set) -> list:
+    def search_records(self, models, emails_to_search: set) -> list:
         records_db = (
             models.execute_kw(
                 self.db,
@@ -81,7 +82,7 @@ class OdooClient:
                 self.password,
                 "res.partner",
                 "search_read",
-                [[["email", "in", list(set_emails)]]],
+                [[["email", "in", list(emails_to_search)]]],
                 {"fields": ["email"]},
             )
             or []

@@ -3,10 +3,16 @@ from typing import Annotated
 
 import typer
 
-from odoo_xmlrpc_csv_importer.application.odoo_etl import odoo_etl
+from odoo_xmlrpc_csv_importer.application.import_contacts import import_contacts
 from odoo_xmlrpc_csv_importer.infrastructure.config import get_settings
+from odoo_xmlrpc_csv_importer.infrastructure.csv_manager import CsvManager
+from odoo_xmlrpc_csv_importer.infrastructure.odoo_client import OdooClient
+from odoo_xmlrpc_csv_importer.services.reference_cache import ReferenceCache
 
 app = typer.Typer()
+
+COUNTRY_CACHE = {}
+STATE_CACHE = {}
 
 
 @app.command()
@@ -31,7 +37,31 @@ def main(
 ) -> None:
     try:
         settings = get_settings()
-        odoo_etl(settings, file_name, max_workers, batch_size)
+
+        odoo_client = OdooClient(
+            url=settings.url,
+            db=settings.db,
+            username=settings.username,
+            password=settings.password.get_secret_value(),
+        )
+
+        reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
+
+        csv_manager = CsvManager(file_name, settings.dlq_file)
+
+        if not odoo_client.uid:
+            raise PermissionError(
+                "Falha na autenticação do Odoo. Verifique as suas credenciais."
+            )
+
+        import_contacts(
+            file_name=file_name,
+            max_workers=max_workers,
+            batch_size=batch_size,
+            odoo_client=odoo_client,
+            csv_manager=csv_manager,
+            reference_cache=reference_cache,
+        )
     except Exception as e:
         typer.secho(f"\nErro Fatal: {e}", fg=typer.colors.RED, bold=True, err=True)
 

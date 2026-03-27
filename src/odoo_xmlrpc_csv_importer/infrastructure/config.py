@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     db: str = Field(...)
     username: str = Field(...)
     password: SecretStr = Field(...)
-    dql_file: str = "failed_records.csv"
+    dlq_file: str = "failed_records.csv"
 
     model_config = SettingsConfigDict(
         env_prefix="odoo_", env_file=".env", extra="ignore"
