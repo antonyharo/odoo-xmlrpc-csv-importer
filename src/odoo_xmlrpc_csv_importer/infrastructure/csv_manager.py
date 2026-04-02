@@ -2,6 +2,7 @@ import csv
 import os
 import threading
 from pathlib import Path
+from typing import Generator
 
 from pydantic import ValidationError
 
@@ -15,19 +16,23 @@ class CsvManager:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
 
-    def _validate_contact(self, row, seen_emails) -> dict:
+    def _validate_contact(self, row: dict, seen_emails: set) -> dict:
         try:
             contact = ContactSchema(**row)
 
             if contact.email in seen_emails:
-                raise ValueError("Registro já existente no arquivo")
+                return {}
 
-            return contact.model_dump()
-        except (ValidationError, ValueError) as e:
-            # print(f"Registro inválido: {e}")
+            return contact.model_dump(mode="json")
+        except ValidationError as e:
+            if ValidationError:
+                self.log_to_dlq(
+                    [row], f"Erro de validação de Schema: {str(e.errors())}"
+                )
+
             return {}
 
-    def stream_csv_contacts(self):
+    def stream_csv_contacts(self) -> Generator[dict]:
         """Import csv data and return an array of contacts with deduplication"""
         try:
             with open(
@@ -38,25 +43,28 @@ class CsvManager:
                 seen_emails = set()
 
                 for row in reader:
-                    validated_contact = self._validate_contact(row, seen_emails)
+                    validated_contact: dict = self._validate_contact(row, seen_emails)
 
                     if not validated_contact:
                         continue
 
                     seen_emails.add(validated_contact["email"])
 
-                    yield row
+                    yield validated_contact
 
         except Exception as e:
             raise RuntimeError(f"Erro durante o stream do arquivo: {e}")
 
-    def log_to_dlq(self, batch: list, error_msg: str):
+    def log_to_dlq(self, batch: list, error_msg: str) -> None:
         """Log into DLQ file with an new error column"""
-        with file_lock:
-            file_exists = os.path.isfile(self.dlq_file)
-            try:
+        try:
+            with file_lock:
+                file_exists = os.path.isfile(self.dlq_file)
                 with open(
-                    self.dlq_file, mode="a", newline="", encoding="utf-8"
+                    self.dlq_file,
+                    mode="a",
+                    newline="",
+                    encoding="utf-8",
                 ) as file:
                     if batch:
                         # Include the new error column into the csv headline
@@ -69,5 +77,5 @@ class CsvManager:
                         for row in batch:
                             row["error_log"] = str(error_msg)
                             writer.writerow(row)
-            except Exception as e:
-                print(f"CRÍTICO: Falha ao escrever no DLQ: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Falha ao escrever no DLQ: {e}")

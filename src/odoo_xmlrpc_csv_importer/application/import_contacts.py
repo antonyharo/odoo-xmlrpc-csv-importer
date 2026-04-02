@@ -18,7 +18,7 @@ def search_existing_emails(batch: list, models, odoo_client) -> set:
     emails_to_search: set = {c["email"] for c in batch}
 
     records_db: list = odoo_client.search_records(models, emails_to_search)
-    return {r["email"] for r in records_db if r.get("email")}
+    return {r["email"].lower() for r in records_db if r.get("email")}
 
 
 def process_batch(batch: list, odoo_client, csv_manager, reference_cache) -> None:
