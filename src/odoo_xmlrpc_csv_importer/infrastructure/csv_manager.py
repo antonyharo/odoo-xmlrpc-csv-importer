@@ -6,9 +6,7 @@ from typing import Generator
 
 from pydantic import ValidationError
 
-from odoo_xmlrpc_csv_importer.domain.contact import ContactSchema
-
-file_lock = threading.Lock()
+from odoo_xmlrpc_csv_importer.domain.contact import is_duplicate, validate_contact
 
 
 class CsvManager:
@@ -16,21 +14,7 @@ class CsvManager:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
 
-    def _validate_contact(self, row: dict, seen_emails: set) -> dict:
-        try:
-            contact = ContactSchema(**row)
-
-            if contact.email in seen_emails:
-                return {}
-
-            return contact.model_dump(mode="json")
-        except ValidationError as e:
-            if ValidationError:
-                self.log_to_dlq(
-                    [row], f"Erro de validação de Schema: {str(e.errors())}"
-                )
-
-            return {}
+        self.file_lock = threading.Lock()
 
     def stream_csv_contacts(self) -> Generator[dict]:
         """Import csv data and return an array of contacts with deduplication"""
@@ -43,13 +27,17 @@ class CsvManager:
                 seen_emails = set()
 
                 for row in reader:
-                    validated_contact: dict = self._validate_contact(row, seen_emails)
+                    try:
+                        validated_contact = validate_contact(row)
 
-                    if not validated_contact:
+                        if is_duplicate(validated_contact["email"], seen_emails):
+                            continue
+
+                    except ValidationError as e:
+                        self.log_to_dlq([row], str(e).replace("\n", " | ").strip())
                         continue
 
                     seen_emails.add(validated_contact["email"])
-
                     yield validated_contact
 
         except Exception as e:
@@ -58,7 +46,7 @@ class CsvManager:
     def log_to_dlq(self, batch: list, error_msg: str) -> None:
         """Log into DLQ file with an new error column"""
         try:
-            with file_lock:
+            with self.file_lock:
                 file_exists = os.path.isfile(self.dlq_file)
                 with open(
                     self.dlq_file,

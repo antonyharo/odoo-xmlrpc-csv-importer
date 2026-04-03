@@ -1,8 +1,10 @@
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
 
 
 class ContactSchema(BaseModel):
-    name: str = Field(max_length=100)
+    model_config = ConfigDict(str_strip_whitespace=True, frozen=True)
+
+    name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
     function: str | None = Field(None, max_length=100)
     company_name: str | None = Field(None, max_length=255)
@@ -14,5 +16,14 @@ class ContactSchema(BaseModel):
 
     @field_validator("email")
     @classmethod
-    def serialize_website(cls, v: str):
+    def validate_email_case(cls, v: str):
         return v.lower()
+
+
+def validate_contact(contact: dict) -> dict:
+    validated_contact = ContactSchema(**contact)
+    return validated_contact.model_dump(mode="json")
+
+
+def is_duplicate(email: str, set_emails: set[str]):
+    return email in set_emails

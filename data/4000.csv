@@ -1,7 +1,7 @@
 name,email,function,company_name,city,country_id,state_id,street,website
-Samuel Parker,bruna29@example.org,Profissional de efeitos especiais,Wilson-Nichols,New York,United States,New York,"New York, New York, United States",https://www.linkedin.com/in/gbarbosa
-Erick Rios,caldeiranina@example.com,General practice doctor,Novais Pires S/A,San Francisco,United States,California,"San Francisco, California, United States",https://www.linkedin.com/in/bhopkins
-Matthew Hart,ogibson@example.org,Escrivão,Farrell-Cunningham,Uberlândia,Brazil,Minas Gerais,"Uberlândia, Minas Gerais, Brazil",https://www.linkedin.com/in/bruna49
+,bruna29example.org,Profissional de efeitos especiais,Wilson-Nichols,New York,United States,New York,"New York, New York, United States",https://www.linkedin.com/in/gbarbosa
+Erick Rios,caldeiraninaexample.com,General practice doctor,Novais Pires S/A,San Francisco,United States,California,"San Francisco, California, United States",https://www.linkedin.com/in/bhopkins
+Matthew Hart,,Escrivão,Farrell-Cunningham,Uberlândia,Brazil,Minas Gerais,"Uberlândia, Minas Gerais, Brazil",https://www.linkedin.com/in/bruna49
 Christine Johnson,christopher47@example.net,Administrador de banco de dados DBA,Aragão,Buffalo,United States,New York,"Buffalo, New York, United States",https://www.linkedin.com/in/ufonseca
 Brayan Brito,ayllafreitas@example.org,Farm manager,Siqueira da Mota - EI,Los Angeles,United States,California,"Los Angeles, California, United States",https://www.linkedin.com/in/tracywalls
 Sr. Kaique Freitas,ssousa@example.net,Bancário,"Ramirez, Hubbard and Edwards",Campinas,Brazil,São Paulo,"Campinas, São Paulo, Brazil",https://www.linkedin.com/in/olivermarques
