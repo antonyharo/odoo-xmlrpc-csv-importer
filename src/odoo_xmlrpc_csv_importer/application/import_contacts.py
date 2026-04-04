@@ -2,16 +2,8 @@ import time
 import xmlrpc.client
 from concurrent.futures import ThreadPoolExecutor
 
-
-def chunker(iterable, size):
-    batch = []
-    for item in iterable:
-        batch.append(item)
-        if len(batch) == size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
+from odoo_xmlrpc_csv_importer.core.chunker import chunker
+from odoo_xmlrpc_csv_importer.infrastructure.logger import logger
 
 
 def search_existing_emails(batch: list, models, odoo_client) -> set:
@@ -52,12 +44,12 @@ def process_batch(batch: list, odoo_client, csv_manager, reference_cache) -> Non
         if contacts_to_create:
             odoo_client.create_contacts(models, contacts_to_create)
 
-        print(
+        logger.info(
             f"Lote processado: {len(contacts_to_create)} contatos criados em {time.time() - start_time:.2f} segundos."
         )
 
     except Exception as e:
-        print(f"Erro no lote: {e}")
+        logger.error(f"Erro no lote: {e}")
         csv_manager.log_to_dlq(batch, str(e))
 
 
@@ -72,12 +64,12 @@ def import_contacts(
 ) -> None:
     start_time = time.time()
 
-    print(f"Lendo arquivo de: {file_name}")
+    logger.info(f"Lendo arquivo de: {file_name}")
 
     if odoo_client.uid:
         contacts_stream = csv_manager.stream_csv_contacts()
 
-        print("\nCarregando lotes...")
+        logger.info("Carregando lotes...")
 
         # Create contacts in batches to avoid overload in odoo or local memory
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -86,6 +78,6 @@ def import_contacts(
                     process_batch, batch, odoo_client, csv_manager, reference_cache
                 )
 
-        print("\nImportação finalizada.")
+        logger.info("Importação finalizada.")
 
-    print(f"Tempo de execução: {time.time() - start_time:.2f} segundos")
+    logger.info(f"Tempo de execução: {time.time() - start_time:.2f} segundos")

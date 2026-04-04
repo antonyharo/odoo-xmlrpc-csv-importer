@@ -7,13 +7,15 @@ from tenacity import (
     wait_exponential,
 )
 
+from odoo_xmlrpc_csv_importer.infrastructure.logger import logger
+
 
 class OdooClient:
     def __init__(self, *, url: HttpUrl, db: str, username: str, password: str):
-        self.url: HttpUrl = url
-        self.db: str = db
-        self.username: str = username
-        self.password: str = password
+        self.url = url
+        self.db = db
+        self.username = username
+        self.password = password
 
         self.uid = self.authenticate()
 
@@ -33,7 +35,7 @@ class OdooClient:
             return uid
 
         except Exception as e:
-            print(f"Erro ao autenticar: {e}")
+            logger.info(f"Erro ao autenticar usuário: {e}")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -50,7 +52,7 @@ class OdooClient:
             "search",
             [[("name", "=", country_name)]],
         )
-        return country_ids[0] if country_ids else False  # type: ignore
+        return country_ids[0] if country_ids else False
 
     @retry(
         stop=stop_after_attempt(3),
@@ -95,7 +97,7 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def create_contacts(self, models, contacts):
+    def create_contacts(self, models, contacts: list):
         """Create contacts in Odoo database"""
         models.execute_kw(
             self.db, self.uid, self.password, "res.partner", "create", [contacts]

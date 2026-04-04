@@ -6,6 +6,7 @@ import typer
 from odoo_xmlrpc_csv_importer.application.import_contacts import import_contacts
 from odoo_xmlrpc_csv_importer.infrastructure.config import get_settings
 from odoo_xmlrpc_csv_importer.infrastructure.csv_manager import CsvManager
+# from odoo_xmlrpc_csv_importer.infrastructure.logger import configure_logger, logger
 from odoo_xmlrpc_csv_importer.infrastructure.odoo_client import OdooClient
 from odoo_xmlrpc_csv_importer.services.reference_cache import ReferenceCache
 

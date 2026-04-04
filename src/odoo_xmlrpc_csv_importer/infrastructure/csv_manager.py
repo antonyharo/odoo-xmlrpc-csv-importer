@@ -16,6 +16,18 @@ class CsvManager:
 
         self.file_lock = threading.Lock()
 
+    # def process_raw_contact(self, raw_contact, seen_emails) -> dict | None:
+    #     try:
+    #         validated_contact = validate_contact(raw_contact)
+
+    #         if is_duplicate(validated_contact["email"], seen_emails):
+    #             return None
+
+    #         return validated_contact
+    #     except ValidationError as e:
+    #         self.log_to_dlq([raw_contact], str(e).replace("\n", " | ").strip())
+    #         return None
+
     def stream_csv_contacts(self) -> Generator[dict]:
         """Import csv data and return an array of contacts with deduplication"""
         try:
@@ -29,15 +41,15 @@ class CsvManager:
                 for row in reader:
                     try:
                         validated_contact = validate_contact(row)
-
-                        if is_duplicate(validated_contact["email"], seen_emails):
-                            continue
-
                     except ValidationError as e:
                         self.log_to_dlq([row], str(e).replace("\n", " | ").strip())
                         continue
 
+                    if is_duplicate(validated_contact["email"], seen_emails):
+                        continue
+
                     seen_emails.add(validated_contact["email"])
+
                     yield validated_contact
 
         except Exception as e:
