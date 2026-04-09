@@ -5,6 +5,7 @@ description = "Aplicação em Python para importação de contatos no Odoo a par
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "rich>=14.0.0",
     "pydantic[email]>=2.12.5",
     "pydantic-settings>=2.13.1",
     "pytest>=9.0.2",

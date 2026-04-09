@@ -16,15 +16,14 @@ class OdooClient:
         self.db = db
         self.username = username
         self.password = password
-
-        self.uid = self.authenticate()
+        self.uid = None
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def authenticate(self):
+    def authenticate(self) -> None:
         """authenticate the user information to return uid"""
         try:
             common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
@@ -32,7 +31,8 @@ class OdooClient:
 
             if not uid:
                 raise ValueError("Falha na autenticação. Verifique as credenciais.")
-            return uid
+
+            self.uid = uid
 
         except Exception as e:
             logger.info(f"Erro ao autenticar usuário: {e}")
@@ -97,7 +97,7 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def create_contacts(self, models, contacts: list):
+    def create_contacts(self, models, contacts: list) -> None:
         """Create contacts in Odoo database"""
         models.execute_kw(
             self.db, self.uid, self.password, "res.partner", "create", [contacts]

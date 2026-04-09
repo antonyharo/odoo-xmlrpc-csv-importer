@@ -7,26 +7,21 @@ from typing import Generator
 from pydantic import ValidationError
 
 from odoo_xmlrpc_csv_importer.domain.contact import is_duplicate, validate_contact
+from odoo_xmlrpc_csv_importer.infrastructure.import_stats import ImportStats
 
 
 class CsvManager:
-    def __init__(self, contacts_file: Path, dlq_file: str) -> None:
+    def __init__(
+        self,
+        contacts_file: Path,
+        dlq_file: str,
+        import_stats: ImportStats | None = None,
+    ) -> None:
         self.contacts_file = contacts_file
         self.dlq_file = dlq_file
+        self.import_stats = import_stats
 
         self.file_lock = threading.Lock()
-
-    # def process_raw_contact(self, raw_contact, seen_emails) -> dict | None:
-    #     try:
-    #         validated_contact = validate_contact(raw_contact)
-
-    #         if is_duplicate(validated_contact["email"], seen_emails):
-    #             return None
-
-    #         return validated_contact
-    #     except ValidationError as e:
-    #         self.log_to_dlq([raw_contact], str(e).replace("\n", " | ").strip())
-    #         return None
 
     def stream_csv_contacts(self) -> Generator[dict]:
         """Import csv data and return an array of contacts with deduplication"""
@@ -42,6 +37,8 @@ class CsvManager:
                     try:
                         validated_contact = validate_contact(row)
                     except ValidationError as e:
+                        if self.import_stats is not None:
+                            self.import_stats.record_validation_error()
                         self.log_to_dlq([row], str(e).replace("\n", " | ").strip())
                         continue
 
