@@ -21,7 +21,36 @@ class CsvManager:
         self.dlq_file = dlq_file
         self.import_stats = import_stats
 
-        self.file_lock = threading.Lock()
+        self._lock = threading.Lock()
+
+    def deduplicate_contacts(contacts):
+        seen_emails = set()
+
+        for contact in contacts:
+            if is_duplicate(contact["email"], seen_emails):
+                continue
+
+            seen_emails.add(contact["email"])
+
+            yield contact
+
+    def sanitize_contacts(self, contacts: list):
+        seen_emails = set()
+
+        for contact in contacts:
+            try:
+                validated_contact = validate_contact(contact)
+            except ValidationError as e:
+                self.import_stats.record_validation_error()
+                self.log_to_dlq([contact], str(e).replace("\n", " | ").strip())
+                continue
+
+            if is_duplicate(validated_contact["email"], seen_emails):
+                continue
+
+            seen_emails.add(contact["email"])
+
+            yield validated_contact
 
     def stream_csv_contacts(self) -> Generator[dict]:
         """Import csv data and return an array of contacts with deduplication"""
@@ -31,23 +60,7 @@ class CsvManager:
             ) as file:
                 reader = csv.DictReader(file)
 
-                seen_emails = set()
-
-                for row in reader:
-                    try:
-                        validated_contact = validate_contact(row)
-                    except ValidationError as e:
-                        if self.import_stats is not None:
-                            self.import_stats.record_validation_error()
-                        self.log_to_dlq([row], str(e).replace("\n", " | ").strip())
-                        continue
-
-                    if is_duplicate(validated_contact["email"], seen_emails):
-                        continue
-
-                    seen_emails.add(validated_contact["email"])
-
-                    yield validated_contact
+                yield from self.sanitize_contacts(reader)
 
         except Exception as e:
             raise RuntimeError(f"Erro durante o stream do arquivo: {e}")
@@ -55,7 +68,7 @@ class CsvManager:
     def log_to_dlq(self, batch: list, error_msg: str) -> None:
         """Log into DLQ file with an new error column"""
         try:
-            with self.file_lock:
+            with self._lock:
                 file_exists = os.path.isfile(self.dlq_file)
                 with open(
                     self.dlq_file,
