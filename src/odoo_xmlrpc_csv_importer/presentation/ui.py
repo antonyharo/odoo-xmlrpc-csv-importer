@@ -72,6 +72,9 @@ def print_summary_table(
         + s["duplicated_contacts"]
     )
 
+    contacts_created_rate = s["contacts_created"] / wall_seconds
+    contacts_processed_rate = processed_hint / wall_seconds
+
     table = Table(show_header=False, box=None)
     table.add_column(style="dim", width=28)
     table.add_column()
@@ -81,6 +84,8 @@ def print_summary_table(
     table.add_row("Processed Batches", f"{s['batches_completed']:,}")
     table.add_row("Batch Size", str(batch_size))
     table.add_row("Created Contacts", f"[green]{s['contacts_created']:,}[/]")
+    table.add_row("Created Contacts Rate", f"[green]{contacts_created_rate:.2f}/s[/]")
+    table.add_row("Processed Contacts Rate", f"[green]{contacts_processed_rate:.2f}/s[/]")
     table.add_row("Duplicated Contacts in CSV", f"[red]{s['duplicated_contacts']:,}[/]")
     table.add_row("Contacts Already in Odoo", f"[red]{s['contacts_skipped_odoo']:,}[/]")
     table.add_row("Validation Errors", f"[red]{s['validation_errors']:,}[/]")
@@ -96,7 +101,7 @@ def print_summary_table(
             f"{processed_hint:,} Rows",
         )
     # table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
-    table.add_row("Total Time", f"{wall_seconds:.1f} s")
+    table.add_row("Total Time", f"{wall_seconds:.2f} s")
 
     console.print()
     console.print(Panel(table, border_style="green", padding=(1, 2)))
