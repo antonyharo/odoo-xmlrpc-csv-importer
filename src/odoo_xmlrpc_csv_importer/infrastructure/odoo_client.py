@@ -1,4 +1,6 @@
+import threading
 import xmlrpc.client
+from typing import Any
 
 from pydantic import HttpUrl
 from tenacity import (
@@ -17,6 +19,15 @@ class OdooClient:
         self.username = username
         self.password = password
         self.uid = None
+        self._thread_local = threading.local()
+
+    @property
+    def models(self):
+        if not hasattr(self._thread_local, "proxy"):
+            self._thread_local.proxy = xmlrpc.client.ServerProxy(
+                f"{self.url}/xmlrpc/2/object"
+            )
+        return self._thread_local.proxy
 
     @retry(
         stop=stop_after_attempt(3),
@@ -30,21 +41,21 @@ class OdooClient:
             uid = common.authenticate(self.db, self.username, self.password, {})
 
             if not uid:
-                raise ValueError("Falha na autenticação. Verifique as credenciais.")
+                raise ValueError("Failed to Authenticate. Check the credentials.")
 
             self.uid = uid
 
         except Exception as e:
-            logger.info(f"Erro ao autenticar usuário: {e}")
+            logger.info(f"Authentication Error: {e}")
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def get_country_id(self, models, country_name: str):
+    def get_country_id(self, country_name: str):
         """get the country id based on the country name"""
-        country_ids = models.execute_kw(
+        country_ids: Any = self.models.execute_kw(
             self.db,
             self.uid,
             self.password,
@@ -59,9 +70,9 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def get_state_id(self, models, country_id, state_name: str):
+    def get_state_id(self, country_id, state_name: str):
         """get the state id based on the state name"""
-        state_ids = models.execute_kw(
+        state_ids: Any = self.models.execute_kw(
             self.db,
             self.uid,
             self.password,
@@ -76,9 +87,9 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def search_records(self, models, emails_to_search: set) -> list:
-        records_db = (
-            models.execute_kw(
+    def search_emails(self, emails_to_search: set) -> list:
+        emails: Any = (
+            self.models.execute_kw(
                 self.db,
                 self.uid,
                 self.password,
@@ -90,15 +101,15 @@ class OdooClient:
             or []
         )
 
-        return records_db
+        return emails
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def create_contacts(self, models, contacts: list) -> None:
+    def create_contacts(self, contacts: list) -> None:
         """Create contacts in Odoo database"""
-        models.execute_kw(
+        self.models.execute_kw(
             self.db, self.uid, self.password, "res.partner", "create", [contacts]
         )
