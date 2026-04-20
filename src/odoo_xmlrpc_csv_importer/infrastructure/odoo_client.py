@@ -87,8 +87,8 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    def search_emails(self, emails_to_search: set) -> list:
-        emails: Any = (
+    def search_emails(self, emails_to_search: set) -> set:
+        results: Any = (
             self.models.execute_kw(
                 self.db,
                 self.uid,
@@ -101,7 +101,7 @@ class OdooClient:
             or []
         )
 
-        return emails
+        return {r["email"].lower() for r in results if r.get("email")}
 
     @retry(
         stop=stop_after_attempt(3),

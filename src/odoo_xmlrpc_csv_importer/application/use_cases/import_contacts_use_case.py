@@ -30,7 +30,7 @@ class ImportContactsUseCase:
     def execute(self, file_path: str, max_workers: int, batch_size: int) -> None:
         logger.info("start_import_contacts_use_case", file=str(file_path))
 
-        valid_stream = self._stream_and_validate_data(file_path)
+        valid_stream = self._stream_and_validate_data()
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = []
@@ -41,9 +41,7 @@ class ImportContactsUseCase:
             for fut in as_completed(futures):
                 fut.result()
 
-    def _stream_and_validate_data(
-        self, file_path: str
-    ) -> Generator[Dict[str, Any], None, None]:
+    def _stream_and_validate_data(self) -> Generator[Dict[str, Any], None, None]:
         """Read CSV, remove invalid or duplicated rows in memory and send to DLQ"""
         for raw_contact in self.csv_reader.stream():
             try:
