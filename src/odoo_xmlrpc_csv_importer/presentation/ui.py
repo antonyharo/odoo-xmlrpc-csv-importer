@@ -37,24 +37,7 @@ class _StatsColumn(ProgressColumn):
         mx = s["max_workers"]
         return Text.from_markup(
             f"[dim]workers[/] [cyan]{workers}[/]/[cyan]{mx}[/]"
-            f"[dim]created/s[/] [green]{rate:,.1f}[/]"
-        )
-
-
-class _ErrorsColumn(ProgressColumn):
-    def __init__(self, stats: ImportStats) -> None:
-        self.stats = stats
-        super().__init__()
-
-    def render(self, task) -> Text:
-        s = self.stats.snapshot()
-        validation_errors = s["validation_errors"]
-        batch_errors = s["batch_errors"]
-        style_val = "red" if validation_errors else "dim"
-        style_bat = "red" if batch_errors else "dim"
-        return Text.from_markup(
-            f"[dim]validation_errors[/] [{style_val}]{validation_errors}[/]  "
-            f"[dim]batch_errors[/] [{style_bat}]{batch_errors}[/]"
+            f"[dim] - created/s[/] [green]{rate:,.1f}[/]"
         )
 
 
@@ -67,7 +50,6 @@ def build_import_progress(stats: ImportStats, started_at: float) -> Progress:
         TimeElapsedColumn(),
         TimeRemainingColumn(),
         _StatsColumn(stats, started_at),
-        _ErrorsColumn(stats),
         expand=True,
     )
 
@@ -87,7 +69,6 @@ def print_summary_table(
         + s["contacts_skipped_odoo"]
         + s["contacts_in_failed_batches"]
     )
-    rate = s["contacts_created"] / wall_seconds if wall_seconds > 0 else 0.0
 
     table = Table(show_header=False, box=None)
     table.add_column(style="dim", width=28)
@@ -98,12 +79,12 @@ def print_summary_table(
     table.add_row("Processed Batches", f"{s['batches_completed']:,}")
     table.add_row("Batch Size", str(batch_size))
     table.add_row("Created Contacts", f"[green]{s['contacts_created']:,}[/]")
-    table.add_row("Rows Already in Odoo", f"{s['contacts_skipped_odoo']:,}")
+    table.add_row("Contacts Already in Odoo", f"{s['contacts_skipped_odoo']:,}")
     table.add_row("Validation Errors", f"[red]{s['validation_errors']:,}[/]")
     table.add_row("Batch Errors", f"[red]{s['batch_errors']:,}[/]")
     if s["contacts_in_failed_batches"]:
         table.add_row(
-            "Failed Contacts in Failed Batches",
+            "Not Loaded Contacts",
             f"[red]{s['contacts_in_failed_batches']:,}[/]",
         )
     if processed_hint:
@@ -111,7 +92,7 @@ def print_summary_table(
             "[dim]Data Volume[/]",
             f"{processed_hint:,} Valid Rows",
         )
-    table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
+    # table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
     table.add_row("Total Time", f"{wall_seconds:.1f} s")
 
     console.print()

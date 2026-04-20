@@ -87,6 +87,38 @@ class OdooClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
+    def get_states_and_countries_ids(self) -> dict:
+        logger.info("fetching_states_and_countries_ids_from_odoo")
+
+        countries_raw: Any = self.models.execute_kw(
+            self.db,
+            self.uid,
+            self.password,
+            "res.country",
+            "search_read",
+            [[]],
+            {"fields": ["name", "id"]},
+        )
+        countries = {c["name"]: c["id"] for c in countries_raw}
+
+        states_raw: Any = self.models.execute_kw(
+            self.db,
+            self.uid,
+            self.password,
+            "res.country.state",
+            "search_read",
+            [[]],
+            {"fields": ["name", "id", "country_id"]},
+        )
+        states = {(s["country_id"][0], s["name"]): s["id"] for s in states_raw}
+
+        return {"countries": countries, "states": states}
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     def search_emails(self, emails_to_search: set) -> set:
         results: Any = (
             self.models.execute_kw(

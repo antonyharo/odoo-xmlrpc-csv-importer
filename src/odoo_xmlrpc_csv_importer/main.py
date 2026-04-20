@@ -58,8 +58,10 @@ def main(
             password=settings.password.get_secret_value(),
         )
         odoo_client.authenticate()
+        states_and_countries_ids = odoo_client.get_states_and_countries_ids()
 
-        reference_cache = ReferenceCache(COUNTRY_CACHE, STATE_CACHE)
+        reference_cache = ReferenceCache()
+        reference_cache.warm_up(states_and_countries_ids)
 
         import_stats = ImportStats(max_workers=max_workers)
 

@@ -96,12 +96,20 @@ class ImportContactsUseCase:
     def _enrich_contacts(self, contacts: list) -> list:
         enriched = []
         for c in contacts:
-            c["country_id"], c["state_id"] = (
-                self.reference_cache.get_contact_reference_ids(
-                    state_name=c["state_id"],
-                    country_name=c["country_id"],
-                    odoo_client=self.odoo_client,
+            if c["country_id"]:
+                c["country_id"], c["state_id"] = (
+                    self.reference_cache.get_contact_reference_ids(
+                        state_name=c["state_id"],
+                        country_name=c["country_id"],
+                        odoo_client=self.odoo_client,
+                    )
                 )
-            )
+
+                if not c["state_id"]:
+                    c["state_id"] = False
+
+                if not c["country_id"]:
+                    c["country_id"] = False
+
             enriched.append(c)
         return enriched
