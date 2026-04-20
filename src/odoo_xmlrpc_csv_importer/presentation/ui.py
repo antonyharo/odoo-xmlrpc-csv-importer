@@ -68,6 +68,8 @@ def print_summary_table(
         s["contacts_created"]
         + s["contacts_skipped_odoo"]
         + s["contacts_in_failed_batches"]
+        + s["validation_errors"]
+        + s["duplicated_contacts"]
     )
 
     table = Table(show_header=False, box=None)
@@ -79,7 +81,8 @@ def print_summary_table(
     table.add_row("Processed Batches", f"{s['batches_completed']:,}")
     table.add_row("Batch Size", str(batch_size))
     table.add_row("Created Contacts", f"[green]{s['contacts_created']:,}[/]")
-    table.add_row("Contacts Already in Odoo", f"{s['contacts_skipped_odoo']:,}")
+    table.add_row("Duplicated Contacts in CSV", f"[red]{s['duplicated_contacts']:,}[/]")
+    table.add_row("Contacts Already in Odoo", f"[red]{s['contacts_skipped_odoo']:,}[/]")
     table.add_row("Validation Errors", f"[red]{s['validation_errors']:,}[/]")
     table.add_row("Batch Errors", f"[red]{s['batch_errors']:,}[/]")
     if s["contacts_in_failed_batches"]:
@@ -90,7 +93,7 @@ def print_summary_table(
     if processed_hint:
         table.add_row(
             "[dim]Data Volume[/]",
-            f"{processed_hint:,} Valid Rows",
+            f"{processed_hint:,} Rows",
         )
     # table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
     table.add_row("Total Time", f"{wall_seconds:.1f} s")

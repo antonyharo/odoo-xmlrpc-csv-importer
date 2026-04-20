@@ -13,6 +13,7 @@ class ImportStats:
     batches_completed: int = 0
     batch_errors: int = 0
     contacts_created: int = 0
+    duplicated_contacts: int = 0
     contacts_skipped_odoo: int = 0
     contacts_in_failed_batches: int = 0
 
@@ -27,6 +28,10 @@ class ImportStats:
     def record_validation_error(self) -> None:
         with self._lock:
             self.validation_errors += 1
+
+    def record_duplicate_contact(self) -> None:
+        with self._lock:
+            self.duplicated_contacts += 1
 
     def record_batch_success(self, *, created: int, skipped_odoo: int) -> None:
         with self._lock:
@@ -49,6 +54,7 @@ class ImportStats:
                 "batches_completed": self.batches_completed,
                 "batch_errors": self.batch_errors,
                 "contacts_created": self.contacts_created,
+                "duplicated_contacts": self.duplicated_contacts,
                 "contacts_skipped_odoo": self.contacts_skipped_odoo,
                 "contacts_in_failed_batches": self.contacts_in_failed_batches,
             }

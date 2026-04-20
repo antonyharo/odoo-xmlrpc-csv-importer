@@ -52,6 +52,7 @@ class ImportContactsUseCase:
                 continue
 
             if is_duplicate(contact["email"], self._seen_emails):
+                self.stats.record_duplicate_contact()
                 continue
 
             self._seen_emails.add(contact["email"])
