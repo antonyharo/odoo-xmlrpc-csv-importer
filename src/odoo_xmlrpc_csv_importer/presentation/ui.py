@@ -36,8 +36,8 @@ class _StatsColumn(ProgressColumn):
         workers = s["active_workers"]
         mx = s["max_workers"]
         return Text.from_markup(
-            f"[dim]workers[/] [cyan]{workers}[/]/[cyan]{mx}[/]  "
-            f"[dim]criados/s[/] [green]{rate:,.1f}[/]"
+            f"[dim]workers[/] [cyan]{workers}[/]/[cyan]{mx}[/]"
+            f"[dim]created/s[/] [green]{rate:,.1f}[/]"
         )
 
 
@@ -48,13 +48,13 @@ class _ErrorsColumn(ProgressColumn):
 
     def render(self, task) -> Text:
         s = self.stats.snapshot()
-        val = s["validation_errors"]
-        bat = s["batch_errors"]
-        style_val = "red" if val else "dim"
-        style_bat = "red" if bat else "dim"
+        validation_errors = s["validation_errors"]
+        batch_errors = s["batch_errors"]
+        style_val = "red" if validation_errors else "dim"
+        style_bat = "red" if batch_errors else "dim"
         return Text.from_markup(
-            f"[dim]validação[/] [{style_val}]{val}[/]  "
-            f"[dim]lotes[/] [{style_bat}]{bat}[/]"
+            f"[dim]validation_errors[/] [{style_val}]{validation_errors}[/]  "
+            f"[dim]batch_errors[/] [{style_bat}]{batch_errors}[/]"
         )
 
 
@@ -89,30 +89,30 @@ def print_summary_table(
     )
     rate = s["contacts_created"] / wall_seconds if wall_seconds > 0 else 0.0
 
-    table = Table(title="Importação concluída", show_header=False, box=None)
+    table = Table(show_header=False, box=None)
     table.add_column(style="dim", width=28)
     table.add_column()
 
-    table.add_row("Arquivo", str(file_name))
-    table.add_row("Lotes processados", f"{s['batches_completed']:,}")
+    table.add_row("File", str(file_name))
     table.add_row("Threads", str(max_workers))
-    table.add_row("Tamanho do lote", str(batch_size))
-    table.add_row("Contatos criados", f"[green]{s['contacts_created']:,}[/]")
-    table.add_row("Ignorados (Odoo)", f"{s['contacts_skipped_odoo']:,}")
-    table.add_row("Erros validação → DLQ", f"[red]{s['validation_errors']:,}[/]")
-    table.add_row("Falhas de lote → DLQ", f"[red]{s['batch_errors']:,}[/]")
+    table.add_row("Processed Batches", f"{s['batches_completed']:,}")
+    table.add_row("Batch Size", str(batch_size))
+    table.add_row("Created Contacts", f"[green]{s['contacts_created']:,}[/]")
+    table.add_row("Rows Already in Odoo", f"{s['contacts_skipped_odoo']:,}")
+    table.add_row("Validation Errors", f"[red]{s['validation_errors']:,}[/]")
+    table.add_row("Batch Errors", f"[red]{s['batch_errors']:,}[/]")
     if s["contacts_in_failed_batches"]:
         table.add_row(
-            "Contatos em lotes falhos",
+            "Failed Contacts in Failed Batches",
             f"[red]{s['contacts_in_failed_batches']:,}[/]",
         )
-    table.add_row("Tempo total", f"{wall_seconds:.1f} s")
-    table.add_row("Taxa (criados)", f"{rate:,.1f} contatos/s")
     if processed_hint:
         table.add_row(
-            "[dim]Volume tratado (aprox.)[/]",
-            f"[dim]{processed_hint:,} linhas úteis em lotes[/]",
+            "[dim]Data Volume[/]",
+            f"{processed_hint:,} Valid Rows",
         )
+    table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
+    table.add_row("Total Time", f"{wall_seconds:.1f} s")
 
     console.print()
     console.print(Panel(table, border_style="green", padding=(1, 2)))
