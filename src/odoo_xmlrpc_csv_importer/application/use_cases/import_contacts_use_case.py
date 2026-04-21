@@ -7,8 +7,10 @@ from pydantic import ValidationError
 from odoo_xmlrpc_csv_importer.domain.contact import is_duplicate, validate_contact
 from odoo_xmlrpc_csv_importer.infrastructure.import_stats import ImportStats
 from odoo_xmlrpc_csv_importer.infrastructure.logger import logger
-from odoo_xmlrpc_csv_importer.infrastructure.odoo_client import OdooClient
 from odoo_xmlrpc_csv_importer.utils.chunker import chunker
+
+DLQ_VALIDATION_ERROR = "validation_error"
+DLQ_BATCH_PROCESSING_ERROR = "batch_processing_error"
 
 
 class ImportContactsUseCase:
@@ -16,7 +18,7 @@ class ImportContactsUseCase:
         self,
         csv_reader,
         dlq_writer,
-        odoo_client: OdooClient,
+        odoo_client,
         reference_cache,
         import_stats: ImportStats,
     ):
@@ -48,7 +50,11 @@ class ImportContactsUseCase:
                 contact = validate_contact(raw_contact)
             except ValidationError as e:
                 self.stats.record_validation_error()
-                self.dlq_writer.write_errors([raw_contact], str(e).replace("\n", " "))
+                self.dlq_writer.write_errors(
+                    [raw_contact],
+                    DLQ_VALIDATION_ERROR,
+                    exception=e,
+                )
                 continue
 
             if is_duplicate(contact["email"], self._seen_emails):
@@ -87,8 +93,12 @@ class ImportContactsUseCase:
             )
 
         except Exception as e:
-            logger.error("batch_failure", error=str(e))
-            self.dlq_writer.write_errors(batch, str(e))
+            logger.exception("batch_failure")
+            self.dlq_writer.write_errors(
+                batch,
+                DLQ_BATCH_PROCESSING_ERROR,
+                exception=e,
+            )
             self.stats.record_batch_failure(len(batch))
 
         finally:
