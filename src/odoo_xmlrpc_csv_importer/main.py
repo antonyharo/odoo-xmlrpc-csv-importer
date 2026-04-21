@@ -45,7 +45,7 @@ def main(
     max_workers: Annotated[
         int,
         typer.Option(help="Total of threads to perform in contacts creation."),
-    ] = 4,
+    ] = 3,
 ) -> None:
     console = Console(stderr=True)
     try:
