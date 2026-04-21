@@ -44,7 +44,7 @@ class ReferenceCache:
     def _check_cache_hit(
         self, country_name: str, state_name: str | None
     ) -> Tuple[bool, int | None, int | None]:
-        # 1. Se a CHAVE não existe, é um Cache Miss verdadeiro.
+        # If the key doesn't exist, it's a true cache miss
         if country_name not in self._countries:
             return False, None, None
 
@@ -61,7 +61,7 @@ class ReferenceCache:
         if state_key not in self._states:
             return False, c_id, None
 
-        # Pode ser um ID real ou um Negative Cache do estado (None)
+        # Could be a real ID or a Negative Cache
         s_id = self._states[state_key]
         return True, c_id, s_id
 

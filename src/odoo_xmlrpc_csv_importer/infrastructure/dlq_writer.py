@@ -31,7 +31,6 @@ class JsonlDlqRecordSerializer:
     ) -> str:
         dlq_record = {
             "occurred_at": datetime.now(timezone.utc).isoformat(),
-            # Keep error_message for backward compatibility with existing consumers.
             "error_message": error_category,
             "error_category": error_category,
             "error_details": dict(error_details) if error_details else None,

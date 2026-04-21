@@ -83,7 +83,7 @@ def print_summary_table(
     table.add_row("Threads", str(max_workers))
     table.add_row("Processed Batches", f"{s['batches_completed']:,}")
     table.add_row("Batch Size", str(batch_size))
-    table.add_row("Created Contacts", f"[green]{s['contacts_created']:,}[/]")
+    table.add_row("Created Contacts", f"[bold green]{s['contacts_created']:,}[/]")
     table.add_row("Created Contacts Rate", f"[green]{contacts_created_rate:.2f}/s[/]")
     table.add_row("Processed Contacts Rate", f"[green]{contacts_processed_rate:.2f}/s[/]")
     table.add_row("Duplicated Contacts in CSV", f"[red]{s['duplicated_contacts']:,}[/]")
@@ -100,7 +100,6 @@ def print_summary_table(
             "[dim]Data Volume[/]",
             f"{processed_hint:,} Rows",
         )
-    # table.add_row("Throughtput", f"{rate:,.1f} contacts/s")
     table.add_row("Total Time", f"{wall_seconds:.2f} s")
 
     console.print()
