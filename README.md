@@ -92,8 +92,6 @@ O Odoo utiliza Gunicorn/WSGI processando requisições de forma síncrona. Um n�
 O sistema processa colunas nativas do modelo `res.partner`. Os campos mínimos para ingestão são:
 - `name` (Obrigatório)
 - `email` (Obrigatório, usado como chave de idempotência e deduplicação)
-- `country_id` (Nome do país, resolvido automaticamente pelo cache)
-- `state_id` (Nome do estado, resolvido automaticamente pelo cache)
 
 Registros sem `name` ou `email` são ignorados diretamente no stream (`CsvManager`), não consumindo I/O.
 
